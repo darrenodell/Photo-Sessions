@@ -1,0 +1,34 @@
+# Changelog
+
+Track requested changes, implementation, builds, and testing feedback here. Pending requests are not shipped features.
+
+## 1.1 — testing build — 2026-10-01
+
+### Notes — 2026-10-01
+
+- User reports that the app is now working reliably on their Galaxy Tab A9 running Android 16. The earlier installation problem is no longer an active blocker; the resolution was not specified.
+- User wants to make changes and rebuild the app for further testing.
+
+### Requested and implemented
+
+- Start a named session immediately, stop it manually, and resume the same session later.
+- Change the inactivity timeout from 30 to 15 minutes. Starting or resuming completes other active sessions. Photos outside manual capture periods continue to form automatic sessions.
+- Rename existing sessions.
+- Copy photos into a named folder under Pictures/Photo Sessions. Camera originals remain intact. A session ID suffix separates identically named sessions. The folder is created on first copy; renaming a session afterward keeps the existing folder, whose path is displayed.
+- Show copied / needs-copying / failed-copy status per photo and session totals. Copying is an explicit action; retries skip existing successful copies.
+- Add Upload to Drive using Android sharing, as chosen by the user. Copy photos first, choose Drive, then confirm the destination in Drive. Upload completion is tracked by Drive, not this app.
+- Delete sessions with confirmation, keeping originals and copied files. Recorded photos from deleted sessions are excluded from later discovery.
+- Refresh the home screen, colors, cards, and controls; remove the “30 quiet minutes” wording.
+- Preserve existing catalogs through a database migration; increase app version to 1.1 / code 2.
+
+### Delivery and testing
+
+- User requested a rebuilt APK replacing the existing Drive APK, preserving its link.
+- Build, migration/session tests, emulator checks, and delivery verification are recorded in VALIDATION.md.
+
+## 1.0 — initial MVP — 2026-09-30
+
+- Implemented discovery of new camera photos, grouping with a fixed 30-minute inactivity timeout, naming notifications, session naming/skipping, session browsing, and local persistence.
+- Preserved original photos without moving, renaming, modifying, or duplicating them.
+- Produced a debug APK and packaged source, installation/usage instructions, and validation results for Google Drive delivery.
+- Recorded 25 passing host tests, a successful Android 14 emulator flow test, and lint with zero errors. See VALIDATION.md for the original test scope and limitations.

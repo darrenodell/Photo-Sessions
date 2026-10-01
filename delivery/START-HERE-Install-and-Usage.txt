@@ -1,0 +1,24 @@
+PHOTO SESSIONS 1.1 — TESTING BUILD
+
+INSTALL / UPDATE
+1. Download Photo-Sessions-1.1-debug.apk from this Drive folder.
+2. Open it from Downloads and choose Update/Install. Do not uninstall the old app or clear its data: the update preserves existing sessions.
+3. If Android requests it, allow installation from the app you used to open the APK.
+4. Open Photo Sessions and allow all-photo access. Notification permission is optional.
+
+USE
+• Tap Start a session, enter a name, then take photos in the normal Camera app.
+• Stop session completes it immediately. Otherwise 15 minutes without a photo completes it (background checks can arrive later).
+• Resume session adds future photos to the same session. Starting or resuming completes another active session.
+• Photos outside a manual session still form automatic sessions.
+• Rename changes the session label.
+• Copy pending photos copies the session into Pictures/Photo Sessions/<name> (<ID>)/. Camera originals stay untouched. Each photo shows its copy status. Retry the action for failed, interrupted, or missing copies.
+• A copied folder retains its original name if you later rename the session. Its path is shown in the app.
+• Upload to Drive opens Android sharing. Choose Drive, select the destination folder, and confirm. Install/sign in to Google Drive if it is absent. Check Drive for completion; this app cannot confirm an upload.
+• Delete session removes the app entry after confirmation, leaving originals and copied files on your tablet.
+
+TEST THIS UPDATE
+Verify old session names and photos remain after updating. Start a named session, take photos, stop, take a photo outside that session, resume, and take another. Check membership, rename, copy twice (no duplicate copies), and share to Drive. Try deleting a throwaway session: originals/copies should remain and the old entry should not return. Check 15-minute inactivity with the screen off on your tablet.
+
+NOTES
+Copying uses extra storage. Copies appear only after you choose Copy pending photos; it does not run automatically. Status may be stale after files are changed outside this app until the next copy check. Only camera images in DCIM/Camera and its subfolders are discovered. Existing photos predating initial setup are not imported. This is a signed debug testing build, not a Play Store release.
