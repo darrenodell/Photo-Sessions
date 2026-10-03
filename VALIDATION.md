@@ -2,6 +2,19 @@
 
 Implementation date: 2026-09-30. Host: Apple Silicon macOS. Scope: the MVP in SPEC.md.
 
+## Version 1.3 checks (2026-10-04)
+
+- Owner feedback after installation: app looks good and works on their tablet. This is user-reported acceptance; it does not imply that every individual device/Drive/background scenario was tested. Friend's Android phone test remains pending.
+
+- Project-local `testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest`: passed. All 38 host tests pass; lint reports zero errors and eight existing dependency/tool version warnings.
+- Extended the disposable-emulator flow test to cover session filters, actual loaded thumbnails, tapping a photo (intercepted image-viewer intent), the copy button in the new upload/copy panel, and deletion through Session options. Existing checks still cover naming, skip, activity recreation, start/stop/resume, rename, byte-identical copies, sharing grants, and source preservation.
+- Android 16 / API 36 Pixel Tablet emulator: flow passed at 2560 × 1600 (1280 dp wide, persistent transfer side panel) and 1200 × 1920 (600 dp wide, expandable transfer panel). Synthetic solid-color JPEGs were used. The initial cold boot showed an emulator System UI not-responding dialog; dismissed it and repeated visual checks after the emulator settled.
+- Physical Galaxy Tab A9 (SM-X115): installed 1.3 / code 4 as an update over 1.2. Compared local catalog tables and persistent preferences before/after: unchanged, excluding the expected scan timestamp / ID bookkeeping. The device had no sessions at the start. No test fixtures or test session were added to the owner's tablet.
+- Visually inspected Home and Settings on the physical tablet, including the corrected system-bar contrast. Session grids and transfer controls were inspected with fixtures on the emulator. Thumbnails now retain the loaded bitmap while background scans refresh them, avoiding blank flashes.
+- Screenshots: `validation/home-v1.3-tablet.png`, `validation/library-v1.3.png`, `validation/library-v1.3-portrait.png`, `validation/session-v1.3-landscape.png`, and `validation/session-v1.3-portrait.png`.
+- Delivered local APK: `delivery/Photo-Sessions-1.3-debug.apk`; uploaded in place to the existing shared Drive file and read back the 1.3 filename / 31,120,546-byte size. Database remains version 3; no migration or core session/copy/Drive algorithm changes.
+- Not reverified in this UI pass: live Google account consent/uploads, mobile-data constraints, background timing, or very large libraries. Drive progress/controls are retained; existing 1.2 device-upload results remain historical.
+
 ## Version 1.2 checks (2026-10-01)
 
 - `testDebugUnitTest lintDebug assembleDebug` on the Mac with the project-local toolchain: passed. 38 host tests (15 grouping, 13 database, 2 notification, 4 Drive query/name helpers, 4 Drive state persistence including the version 2 to 3 migration). Lint: zero errors.

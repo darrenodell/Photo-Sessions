@@ -2,6 +2,26 @@
 
 Track requested changes, implementation, builds, and testing feedback here. Pending requests are not shipped features.
 
+## 1.3 — gallery refresh — 2026-10-04
+
+### Testing and delivery
+
+- Owner confirms that 1.3 looks good and works on their Galaxy Tab A9. Individual acceptance scenarios were not enumerated.
+- Friend's Android phone testing is pending; next checks are the smaller-screen layout, camera discovery, and Google Drive connection/upload.
+- Uploaded `Photo-Sessions-1.3-debug.apk` over the existing Drive APK, preserving file ID and sharing state: https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view
+- Work paused at the owner's request after cleanup. No production authorization publishing or Google Play release has been performed.
+
+### Implemented
+
+- Replaced the introductory banner and session rows with an adaptive album-cover grid and All / Active / Complete filters.
+- Added a compact discovery status, empty-state guidance, consistent blue/neutral theme, accessible icon controls, and dark system-bar icons on light backgrounds.
+- Replaced eager fixed three-column photo rows with a lazy adaptive grid. Photos open in the device viewer when tapped.
+- Moved upload/copy/share controls into an expandable panel on narrow windows and a persistent side panel on wide windows. Upload progress and reconnect/failure status remain visible in the collapsed panel summary.
+- Moved Delete session into the Session options menu; preserved its confirmation and existing session actions.
+- Grouped Settings and constrained the naming form width on tablets.
+- Kept loaded thumbnails visible during background refreshes to avoid flicker.
+- App version 1.3 / code 4; no database or session-rule changes. Installed as an update on the owner's Galaxy Tab A9. Validation includes catalog/preference preservation, host tests, and disposable-emulator UI checks.
+
 ## 1.2 — testing build — 2026-10-01
 
 ### Requested and implemented

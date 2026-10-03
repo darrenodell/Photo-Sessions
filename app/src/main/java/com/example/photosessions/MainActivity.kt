@@ -16,6 +16,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,15 +27,17 @@ import com.google.android.gms.auth.api.identity.Identity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -64,11 +67,11 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT), navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT))
         requestedSession = intent.getLongExtra("session_id", 0)
         openSession = intent.getLongExtra("open_session_id", 0)
         setContent {
-            MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF235D51), secondary = Color(0xFF8C6239), background = Color(0xFFF5F3ED), surface = Color(0xFFFFFBF4), surfaceVariant = Color(0xFFE4EBE2))) {
+            PhotoSessionsTheme {
                 Organizer((application as SessionApp).repository, requestedSession, openSession, resumed) { requestedSession = 0; openSession = 0; intent.removeExtra("session_id"); intent.removeExtra("open_session_id") }
             }
         }
@@ -92,7 +95,7 @@ private data class ScreenData(val catalog: Catalog = Catalog(), val baseline: Lo
     val driveAccount: String? = null, val driveReconnect: Boolean = false)
 private fun date(time: Long): String = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(time))
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun Organizer(repository: Repository, requestedId: Long, openId: Long, resumeCount: Int, consumeRequest: () -> Unit) {
     val context = LocalContext.current
@@ -196,104 +199,94 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
         text = { Text("Pending uploads stop. Files already in Drive stay there. To fully remove this app's access, visit your Google Account's third-party access page.") },
         confirmButton = { TextButton(onClick = { disconnecting = false; action { repository.disconnectDrive() } }) { Text("Disconnect") } },
         dismissButton = { TextButton(onClick = { disconnecting = false }) { Text("Cancel") } })
-    Scaffold(snackbarHost = { SnackbarHost(snackbar) }, topBar = {
-        TopAppBar(title = { Text(when(screen) { "settings" -> "Settings"; "name" -> "Name session"; "session" -> "Photo session"; else -> "Photo Sessions" }) },
-            navigationIcon = { if(screen != "home") TextButton(onClick = { back() }) { Text("Back") } },
-            actions = { if(screen == "home") TextButton(onClick = { screen = "settings" }) { Text("Settings") } })
+    var sessionMenu by remember { mutableStateOf(false) }
+    Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
+        TopAppBar(
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            title = { Text(when(screen) { "settings" -> "Settings"; "name" -> "Name session"; "session" -> "Session"; else -> "Photo Sessions" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            navigationIcon = { if(screen != "home") IconButton(onClick = { back() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") } },
+            actions = {
+                if(screen == "home") IconButton(onClick = { screen = "settings" }) { Icon(Icons.Outlined.Settings, "Settings") }
+                if(screen == "session" && current != null) Box {
+                    IconButton(onClick = { sessionMenu = true }) { Icon(Icons.Outlined.MoreVert, "Session options") }
+                    DropdownMenu(expanded = sessionMenu, onDismissRequest = { sessionMenu = false }) {
+                        DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, enabled = !busy,
+                            onClick = { sessionMenu = false; screen = "name" })
+                        DropdownMenuItem(text = { Text("Delete session", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(Icons.Outlined.Delete, null) }, enabled = !busy,
+                            onClick = { sessionMenu = false; deleting = true })
+                    }
+                }
+            })
     }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when {
                 !loaded -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                screen == "settings" -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("Discovery", style = MaterialTheme.typography.headlineSmall)
-                    Text("New camera photos are grouped into sessions. Copy them into named folders and upload sessions to Google Drive. Camera originals stay untouched.")
-                    Text("Session timeout: 15 minutes", style = MaterialTheme.typography.titleMedium)
-                    Text("Sessions complete after 15 minutes without a photo. Resume any session to add more photos. Android may delay background checks.")
-                    HorizontalDivider()
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Session notifications", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                        Switch(checked = data.notifications, onCheckedChange = { enabled -> action { repository.notifications(enabled) } })
-                    }
-                    Text("App preference: ${if(data.notifications) "on" else "off"}. Android permission/channel: ${if(notificationAllowed) "allowed" else "blocked"}.")
-                    Text("Turning this off keeps discovery and in-app naming active. Unprompted completed sessions can notify when it is turned back on.")
-                    if(Build.VERSION.SDK_INT >= 33 && !notificationAllowed) Button(onClick = { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("Allow notifications") }
-                    OutlinedButton(onClick = { notificationSettings() }) { Text("Android notification settings") }
-                    HorizontalDivider()
-                    Text("Google Drive", style = MaterialTheme.typography.titleMedium)
-                    Text(data.driveAccount?.let { "Connected as $it. Uploads go to My Drive / $DRIVE_ROOT_FOLDER." } ?: "Not connected. Tap Upload to Google Drive in a session to connect.")
-                    if(data.driveReconnect) Text("Google needs you to reconnect. Open a session and tap Upload to Google Drive.", color = MaterialTheme.colorScheme.error)
-                    if(data.driveAccount != null) OutlinedButton(onClick = { disconnecting = true }) { Text("Disconnect Google Drive") }
-                    HorizontalDivider()
-                    Text("Photo access: ${access.name.lowercase()}")
-                    Button(onClick = { requestPhotos() }) { Text("Review photo access") }
-                    OutlinedButton(onClick = { appSettings() }) { Text("Android app settings") }
-                    data.baseline?.let { Text("Monitoring since ${date(it)}") }
-                    data.lastScan?.let { Text("Last successful scan: ${date(it)}") }
-                }
-                screen == "home" -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    item {
-                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary), shape = RoundedCornerShape(24.dp)) {
-                            Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Text("YOUR PHOTO JOURNAL", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.75f))
-                                Text("Make room for\nevery moment.", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-                                Text("Start a named session, capture your photos, and keep them together.", color = Color.White.copy(alpha = 0.9f))
-                                FilledTonalButton(enabled = !busy, onClick = { newSession = true }) { Text("+  Start a session") }
-                            }
+                screen == "settings" -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                    Column(Modifier.widthIn(max = 680.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
+                        SettingsGroup("Photo discovery") {
+                            Text("New camera photos are grouped into sessions. Your camera originals stay untouched.")
+                            Text("15-minute session timeout", style = MaterialTheme.typography.titleMedium)
+                            Text("Sessions complete after 15 minutes without a photo. Resume a session to add more. Android may delay background checks.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            HorizontalDivider()
+                            Text("Photo access: ${access.name.lowercase()}", style = MaterialTheme.typography.titleSmall)
+                            TextButton(onClick = { requestPhotos() }) { Text("Review photo access") }
+                            TextButton(onClick = { appSettings() }) { Text("Android app settings") }
                         }
-                        Spacer(Modifier.height(16.dp))
-                        Text("Your sessions", style = MaterialTheme.typography.titleLarge)
-                    }
-                    item {
-                        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            when {
-                                data.baseline == null -> {
-                                    Text("Start with your next photo", style = MaterialTheme.typography.titleMedium)
-                                    Text("Allow photo access to find new camera photos. Existing photos will not be imported. Photos stay on this device unless you choose to share them.")
-                                    Button(onClick = {
-                                        scope.launch {
-                                            withContext(Dispatchers.IO) { repository.start() }
-                                            requestPhotos()
-                                        }
-                                    }) { Text("Start monitoring") }
-                                }
-                                access != PhotoAccess.FULL -> {
-                                    Text(if(access == PhotoAccess.NONE) "Photo access needed" else "Limited photo access", style = MaterialTheme.typography.titleMedium)
-                                    Text("Allow all photos for automatic discovery. With selected access, only the photos you select are visible; new camera photos may be missed.")
-                                    Button(onClick = { requestPhotos() }) { Text("Review photo access") }
-                                    TextButton(onClick = { appSettings() }) { Text("Open Android settings") }
-                                }
-                                else -> Text(scanStatus.ifBlank { "Monitoring is ready. Checking for new camera photos…" })
+                        SettingsGroup("Notifications") {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Session reminders", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                                Switch(checked = data.notifications, onCheckedChange = { enabled -> action { repository.notifications(enabled) } })
                             }
-                            if(data.baseline != null) TextButton(onClick = { Work.scan(context) }) { Text("Check now") }
-                        } }
-                    }
-                    if(data.baseline != null && data.notifications && !notificationAllowed) item {
-                        OutlinedCard { Column(Modifier.padding(16.dp)) {
-                            Text("Get one reminder to name each completed session.")
-                            TextButton(onClick = {
-                                if(Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) else notificationSettings()
-                            }) { Text("Enable reminders") }
+                            Text("One reminder to name each completed session. Photo discovery continues when reminders are off.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Android notifications: ${if(notificationAllowed) "allowed" else "blocked"}", style = MaterialTheme.typography.bodySmall)
+                            if(Build.VERSION.SDK_INT >= 33 && !notificationAllowed) TextButton(onClick = { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("Allow notifications") }
                             TextButton(onClick = { notificationSettings() }) { Text("Android notification settings") }
-                        } }
+                        }
+                        SettingsGroup("Google Drive") {
+                            Text(data.driveAccount ?: "Not connected", style = MaterialTheme.typography.titleMedium)
+                            Text(if(data.driveAccount == null) "Open a session and choose Upload to Google Drive to connect." else "Uploads go to My Drive / $DRIVE_ROOT_FOLDER.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if(data.driveReconnect) Text("Reconnect by opening a session and choosing Upload to Google Drive.", color = MaterialTheme.colorScheme.error)
+                            if(data.driveAccount != null) TextButton(onClick = { disconnecting = true }) { Text("Disconnect Google Drive") }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Photo Sessions 1.3", style = MaterialTheme.typography.labelLarge)
+                            data.baseline?.let { Text("Monitoring since ${date(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            data.lastScan?.let { Text("Last successful scan: ${date(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
                     }
-                    if(data.catalog.sessions.isEmpty()) item {
-                        Spacer(Modifier.height(24.dp))
-                        Text("No sessions yet", style = MaterialTheme.typography.titleLarge)
-                        Text("New camera photos taken after setup will appear here. Photos in screenshots, downloads, and other folders are not included.")
-                    }
-                    items(data.catalog.sessions, key = { it.id }) { session ->
-                        val photos = data.catalog.photos.filter { it.sessionId == session.id }
-                        Card(onClick = { sessionId = session.id; screen = "session" }, modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Thumbnail(photos.firstOrNull { it.available } ?: photos.firstOrNull(), revision + resumeCount, Modifier.size(80.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(session.name ?: "Unnamed session", style = MaterialTheme.typography.titleMedium)
-                                    Text(date(session.start), style = MaterialTheme.typography.bodySmall)
-                                    Text("${photos.size} photos · ${if(session.complete) "Complete" else "Active"}")
-                                    Text("${photos.count { it.copyState == "copied" }} copied · ${photos.count { it.driveState == "uploaded" && it.driveAccount == data.driveAccount }} in Drive", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                }
+                screen == "home" -> SessionLibrary(data.catalog, revision + resumeCount, data.driveAccount, busy,
+                    onStart = { newSession = true }, onOpen = { sessionId = it; screen = "session" }) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        when {
+                            data.baseline == null || access != PhotoAccess.FULL -> Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(16.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(if(data.baseline == null) "Set up photo discovery" else if(access == PhotoAccess.NONE) "Photo access needed" else "Limited photo access", style = MaterialTheme.typography.titleMedium)
+                                    Text("Allow all photos to discover new camera pictures. Existing photos are not imported.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(enabled = !busy, onClick = {
+                                            if(data.baseline == null) {
+                                                busy = true
+                                                scope.launch {
+                                                    try {
+                                                        withContext(Dispatchers.IO) { repository.start() }
+                                                        requestPhotos()
+                                                    } catch(e: Exception) { error = e.message ?: "Could not start photo discovery." }
+                                                    finally { busy = false }
+                                                }
+                                            } else requestPhotos()
+                                        }) { Text(if(data.baseline == null) "Start monitoring" else "Review photo access") }
+                                        if(data.baseline != null) TextButton(onClick = { appSettings() }) { Text("Android app settings") }
+                                    }
                                 }
                             }
+                            else -> MonitoringStatus(
+                                message = scanStatus.takeIf { it.isNotBlank() && it != "Monitoring camera photos. Background checks may be delayed by Android." },
+                                onCheck = { Work.scan(context) })
                         }
+                        if(data.baseline != null && data.notifications && !notificationAllowed) TextButton(onClick = {
+                            if(Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) else notificationSettings()
+                        }) { Text("Enable session reminders") }
                     }
                 }
                 current == null -> Column(Modifier.padding(24.dp)) { Text("This session is unavailable."); TextButton(onClick = { screen = "home" }) { Text("Go to sessions") } }
@@ -305,7 +298,7 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
                         catch (_: Exception) { error = "Could not save. Please try again." }
                         finally { saving = false }
                     } }
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.align(Alignment.TopCenter).widthIn(max = 600.dp).fillMaxHeight().verticalScroll(rememberScrollState()).imePadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Thumbnail(currentPhotos.firstOrNull { it.available } ?: currentPhotos.firstOrNull(), revision + resumeCount, Modifier.fillMaxWidth().height(220.dp))
                         Text("${currentPhotos.size} photos", style = MaterialTheme.typography.headlineSmall)
                         Text("${date(current.start)} — ${date(current.end)}")
@@ -315,82 +308,93 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
                         if(current.name == null) Text("Skipping keeps this session unnamed. You can name it here later.")
                     }
                 }
-                else -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(current.name ?: "Unnamed session", style = MaterialTheme.typography.headlineSmall)
-                    Text("${date(current.start)} — ${date(current.end)}")
-                    Text("${currentPhotos.size} photos · ${if(current.complete) "Complete" else "In progress"}")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(enabled = !busy, onClick = { if(current.complete) {
-                            if(current.name == null) screen = "name" else action { repository.begin(current.name, current.id) }
-                        } else action { repository.stop(current.id) } }) { Text(if(current.complete) "Resume session" else "Stop session") }
-                        OutlinedButton(enabled = !busy, onClick = { screen = "name" }) { Text(if(current.name == null) "Name session" else "Rename") }
-                    }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("${currentPhotos.count { it.copyState == "copied" }} copied · ${currentPhotos.count { it.copyState != "copied" }} need copying", style = MaterialTheme.typography.titleSmall)
-                            Text(SessionFiles(context, repository.db).folder(current.id) ?: "Copies will appear in Pictures/Photo Sessions after you copy them.", style = MaterialTheme.typography.bodySmall)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                TextButton(enabled = !busy && currentPhotos.isNotEmpty() && current.name != null, onClick = { action { repository.copy(current.id) } }) { Text("Copy pending photos") }
-                            }
-                            if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                        }
-                    }
+                else -> {
                     val works by remember(current.id) { WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(DriveWork.name(current.id)) }.collectAsState(initial = emptyList())
                     val work = works.firstOrNull { !it.state.isFinished }
                     val workDone = work?.progress?.getInt("done", 0) ?: 0
                     val workTotal = work?.progress?.getInt("total", 0) ?: 0
                     val uploaded = currentPhotos.count { it.driveState == "uploaded" && it.driveAccount == data.driveAccount && data.driveAccount != null }
                     val failedUploads = currentPhotos.count { it.driveState == "failed" && it.driveAccount == data.driveAccount }
-                    val folderUrl = remember(current.id, revision, data.driveAccount) { DriveUploader(context, repository.db).folderUrl(current.id) }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Google Drive · $uploaded of ${currentPhotos.size} uploaded", style = MaterialTheme.typography.titleSmall)
-                            val wifiOnly = repository.db.state("drive_mode_${current.id}") != "any"
-                            Text(when(work?.state) {
-                                WorkInfo.State.RUNNING -> if(workTotal > 0) "Uploading $workDone of $workTotal…" else "Connecting to Google Drive…"
-                                WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> if(wifiOnly) "Waiting for Wi-Fi…" else "Waiting for a connection…"
-                                else -> when {
-                                    data.driveReconnect -> "Google needs you to reconnect. Tap Upload to Google Drive."
-                                    failedUploads > 0 -> "$failedUploads photos could not be read. Upload again to retry them."
-                                    data.driveAccount == null -> "Connect your Google account to upload this session."
-                                    uploaded == currentPhotos.size && uploaded > 0 -> "All photos are in Drive."
-                                    else -> "Uploads go to My Drive / $DRIVE_ROOT_FOLDER / ${DriveQuery.folderName(current.name)}."
-                                }
-                            }, style = MaterialTheme.typography.bodySmall)
-                            if(work?.state == WorkInfo.State.RUNNING && workTotal > 0)
-                                LinearProgressIndicator(progress = { workDone.toFloat() / workTotal }, modifier = Modifier.fillMaxWidth())
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if(work == null) TextButton(enabled = !busy && currentPhotos.isNotEmpty() && pendingUploadId == 0L, onClick = { choosingNetwork = true }) { Text("Upload to Google Drive") }
-                                else TextButton(enabled = !busy, onClick = { action { repository.cancelUpload(current.id) } }) { Text("Cancel upload") }
-                                if(folderUrl != null) TextButton(onClick = {
-                                    try { context.startActivity(Intent(Intent.ACTION_VIEW, folderUrl.toUri())) } catch(_: Exception) { error = "No app can open Drive links." }
-                                }) { Text("Open in Drive") }
+                    SessionGallery(
+                        sessionId = current.id, photos = currentPhotos, refresh = revision + resumeCount,
+                        transferSummary = when(work?.state) {
+                            WorkInfo.State.RUNNING -> if(workTotal > 0) "Uploading $workDone of $workTotal…" else "Connecting to Google Drive…"
+                            WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> "Upload queued — open for details"
+                            else -> when {
+                                data.driveReconnect -> "Reconnect to Google Drive"
+                                failedUploads > 0 -> "$failedUploads uploads need attention"
+                                else -> "${currentPhotos.count { it.copyState == "copied" }} copied  •  $uploaded in Drive"
                             }
-                            TextButton(enabled = !busy && currentPhotos.isNotEmpty(), onClick = {
-                                busy = true
-                                scope.launch {
-                                    try {
-                                        val share = withContext(Dispatchers.IO) { SessionFiles(context, repository.db).shareIntent(current.id) }
-                                        context.startActivity(Intent.createChooser(share, "Share copied photos"))
-                                    } catch(e: Exception) { error = e.message ?: "Could not share photos." }
-                                    finally { busy = false }
+                        },
+                        onPhoto = { photo ->
+                            try { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(photo.uri.toUri(), "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
+                            catch(_: Exception) { error = "This photo is unavailable, or no app can open it." }
+                        },
+                        header = {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                SessionBadge(!current.complete)
+                                Text(current.name ?: "Unnamed session", style = MaterialTheme.typography.headlineLarge)
+                                Text("${currentPhotos.size} photos  •  ${date(current.start)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(enabled = !busy, onClick = { if(current.complete) {
+                                        if(current.name == null) screen = "name" else action { repository.begin(current.name, current.id) }
+                                    } else action { repository.stop(current.id) } }) { Text(if(current.complete) "Resume session" else "Stop session") }
+                                    TextButton(enabled = !busy, onClick = { screen = "name" }) { Text(if(current.name == null) "Name session" else "Rename") }
                                 }
-                            }) { Text("Share copies…") }
-                            if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                if(currentPhotos.any { !it.available } || access != PhotoAccess.FULL) Text("Some photos may be unavailable. Check photo access or device storage.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        tools = {
+                            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("${currentPhotos.count { it.copyState == "copied" }} copied · ${currentPhotos.count { it.copyState != "copied" }} need copying", style = MaterialTheme.typography.titleSmall)
+                                    Text(SessionFiles(context, repository.db).folder(current.id) ?: "Copies will appear in Pictures/Photo Sessions after you copy them.", style = MaterialTheme.typography.bodySmall)
+                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(enabled = !busy && currentPhotos.isNotEmpty() && current.name != null, onClick = { action { repository.copy(current.id) } }) { Text("Copy pending photos") }
+                                    }
+                                    if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                }
+                            }
+                            val folderUrl = remember(current.id, revision, data.driveAccount) { DriveUploader(context, repository.db).folderUrl(current.id) }
+                            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Google Drive · $uploaded of ${currentPhotos.size} uploaded", style = MaterialTheme.typography.titleSmall)
+                                    val wifiOnly = repository.db.state("drive_mode_${current.id}") != "any"
+                                    Text(when(work?.state) {
+                                        WorkInfo.State.RUNNING -> if(workTotal > 0) "Uploading $workDone of $workTotal…" else "Connecting to Google Drive…"
+                                        WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> if(wifiOnly) "Waiting for Wi-Fi…" else "Waiting for a connection…"
+                                        else -> when {
+                                            data.driveReconnect -> "Google needs you to reconnect. Tap Upload to Google Drive."
+                                            failedUploads > 0 -> "$failedUploads photos could not be read. Upload again to retry them."
+                                            data.driveAccount == null -> "Connect your Google account to upload this session."
+                                            uploaded == currentPhotos.size && uploaded > 0 -> "All photos are in Drive."
+                                            else -> "Uploads go to My Drive / $DRIVE_ROOT_FOLDER / ${DriveQuery.folderName(current.name)}."
+                                        }
+                                    }, style = MaterialTheme.typography.bodySmall)
+                                    if(work?.state == WorkInfo.State.RUNNING && workTotal > 0)
+                                        LinearProgressIndicator(progress = { workDone.toFloat() / workTotal }, modifier = Modifier.fillMaxWidth())
+                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        if(work == null) TextButton(enabled = !busy && currentPhotos.isNotEmpty() && pendingUploadId == 0L, onClick = { choosingNetwork = true }) { Text("Upload to Google Drive") }
+                                        else TextButton(enabled = !busy, onClick = { action { repository.cancelUpload(current.id) } }) { Text("Cancel upload") }
+                                        if(folderUrl != null) TextButton(onClick = {
+                                            try { context.startActivity(Intent(Intent.ACTION_VIEW, folderUrl.toUri())) } catch(_: Exception) { error = "No app can open Drive links." }
+                                        }) { Text("Open in Drive") }
+                                    }
+                                    TextButton(enabled = !busy && currentPhotos.isNotEmpty(), onClick = {
+                                        busy = true
+                                        scope.launch {
+                                            try {
+                                                val share = withContext(Dispatchers.IO) { SessionFiles(context, repository.db).shareIntent(current.id) }
+                                                context.startActivity(Intent.createChooser(share, "Share copied photos"))
+                                            } catch(e: Exception) { error = e.message ?: "Could not share photos." }
+                                            finally { busy = false }
+                                        }
+                                    }) { Text("Share copies…") }
+                                    if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                }
+                            }
                         }
-                    }
-                    TextButton(enabled = !busy, onClick = { deleting = true }) { Text("Delete session", color = MaterialTheme.colorScheme.error) }
-                    if(currentPhotos.any { !it.available } || access != PhotoAccess.FULL) Text("Some photos may be unavailable because access changed, their storage is offline, or they were removed.")
-                    currentPhotos.chunked(3).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.forEach { photo -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Thumbnail(photo, revision + resumeCount, Modifier.fillMaxWidth().aspectRatio(1f))
-                                Text(when(photo.copyState) { "copied" -> "Copied"; "failed" -> "Copy failed · retry"; "copying" -> "Needs retry"; else -> "Needs copying" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            } }
-                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                        }
-                    }
-                    Spacer(Modifier.height(20.dp))
+                    )
                 }
             }
         }
@@ -398,10 +402,12 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
 }
 
 @Composable
-private fun Thumbnail(photo: Photo?, refresh: Long, modifier: Modifier) {
+internal fun Thumbnail(photo: Photo?, refresh: Long, modifier: Modifier) {
     val context = LocalContext.current
-    var bitmap by remember(photo?.key, refresh) { mutableStateOf<Bitmap?>(null) }
-    var loading by remember(photo?.key, refresh) { mutableStateOf(true) }
+    // Keep an already loaded image visible while a background scan refreshes it.
+    // Clear immediately when the photo identity or availability changes.
+    var bitmap by remember(photo?.key, photo?.available) { mutableStateOf<Bitmap?>(null) }
+    var loading by remember(photo?.key, photo?.available) { mutableStateOf(photo?.available == true) }
     LaunchedEffect(photo?.key, photo?.available, refresh) {
         bitmap = if(photo?.available == true && Permissions.access(context) != PhotoAccess.NONE) withContext(Dispatchers.IO) {
             try { context.contentResolver.loadThumbnail(photo.uri.toUri(), Size(400, 400), null) }
@@ -411,6 +417,9 @@ private fun Thumbnail(photo: Photo?, refresh: Long, modifier: Modifier) {
     }
     Box(modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
         bitmap?.let { Image(it.asImageBitmap(), contentDescription = "Camera photo taken ${date(photo!!.time)}", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-            ?: Text(if(loading) "Loading…" else "Photo unavailable", Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall)
+            ?: Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AlbumIcon(Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if(loading) "Loading…" else if(photo == null) "No photos yet" else "Photo unavailable", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
     }
 }

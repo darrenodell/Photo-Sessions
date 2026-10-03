@@ -105,6 +105,21 @@ class OrganizerFlowTest {
             val older = first.sessions.minBy { it.start }
             val newer = first.sessions.maxBy { it.start }
             instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("All").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Active").performClick()
+            compose.onNodeWithText("No active sessions").assertIsDisplayed()
+            compose.onNodeWithText("Show all sessions").performClick()
+            compose.onAllNodesWithText("Unnamed session").assertCountEquals(2)
+            compose.waitUntil(10_000) {
+                compose.onAllNodes(hasContentDescription("Camera photo taken", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size == 2
+            }
+            compose.waitForIdle()
+            instrumentation.waitForIdleSync()
+            android.os.SystemClock.sleep(300)
+            automation.takeScreenshot()?.let { screenshot ->
+                File(context.filesDir, "validation-library-v13.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                screenshot.recycle()
+            }
             manager.activeNotifications.single { it.tag == older.id.toString() }.notification.contentIntent.send()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Session name").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Session name").performTextInput("  Garage wiring  ")
@@ -118,6 +133,19 @@ class OrganizerFlowTest {
             compose.waitUntil(10_000) { resumedActivity()?.let { it !== originalActivity } == true }
             compose.waitForIdle()
             compose.onNodeWithText("Garage wiring").assertIsDisplayed()
+            compose.waitUntil(10_000) {
+                compose.onAllNodes(hasContentDescription("Camera photo taken", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size == 2
+            }
+            val viewMonitor = instrumentation.addMonitor(android.content.IntentFilter(Intent.ACTION_VIEW).apply {
+                addDataType("image/*"); addDataScheme("content")
+            }, android.app.Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null), true)
+            try {
+                compose.onAllNodes(hasContentDescription("Camera photo taken", substring = true)).onFirst().performClick()
+                assertEquals("Tapping a photo should open the device viewer", 1, viewMonitor.hits)
+            } finally { instrumentation.removeMonitor(viewMonitor) }
+            compose.waitForIdle()
+            instrumentation.waitForIdleSync()
+            android.os.SystemClock.sleep(300)
             automation.takeScreenshot()?.let { screenshot ->
                 File(context.filesDir, "validation-session.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 screenshot.recycle()
@@ -134,7 +162,16 @@ class OrganizerFlowTest {
             assertEquals(before, uris.map { hash(it) })
             // Real MediaStore copies must be byte-identical, outside Camera, and idempotent.
             val files = SessionFiles(context, repo.db)
-            repo.copy(older.id)
+            val sessionActivity = resumedActivity()!!
+            instrumentation.runOnMainSync {
+                sessionActivity.startActivity(Intent(context, MainActivity::class.java).putExtra("open_session_id", older.id))
+            }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Garage wiring").fetchSemanticsNodes().isNotEmpty() }
+            if(compose.onAllNodesWithContentDescription("Show upload and copy controls").fetchSemanticsNodes().isNotEmpty()) {
+                compose.onNodeWithContentDescription("Show upload and copy controls").performClick()
+            }
+            compose.onNodeWithText("Copy pending photos").performScrollTo().performClick()
+            compose.waitUntil(10_000) { repo.db.load().photos.filter { it.sessionId == older.id }.all { it.copyState == "copied" } }
             val copied = repo.db.load().photos.filter { it.sessionId == older.id }
             assertTrue(copied.all { it.copyState == "copied" })
             copied.forEach { p ->
@@ -168,7 +205,7 @@ class OrganizerFlowTest {
             // Exercise the actual start/stop/resume/rename controls.
             resumedActivity()?.let { activity -> instrumentation.runOnMainSync { activity.finish() } }
             instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            compose.onNodeWithText("+  Start a session").performScrollTo().performClick()
+            compose.onNodeWithText("Start a session").performScrollTo().performClick()
             compose.onNodeWithText("Session name").performTextInput("New project")
             compose.onNodeWithText("Start session").performClick()
             compose.waitUntil(10_000) { repo.db.load().sessions.any { it.name == "New project" } }
@@ -180,13 +217,20 @@ class OrganizerFlowTest {
             compose.onNodeWithText("Session name").performTextReplacement("Project renamed")
             compose.onNodeWithText("Save").performScrollTo().performClick()
             compose.waitUntil(10_000) { repo.db.load().sessions.any { it.name == "Project renamed" } }
+            compose.waitForIdle()
+            instrumentation.waitForIdleSync()
+            android.os.SystemClock.sleep(300)
             automation.takeScreenshot()?.let { screenshot ->
                 File(context.filesDir, "validation-session-v11.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 screenshot.recycle()
             }
-            compose.onNodeWithText("Delete session").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("Session options").performClick()
+            compose.onNodeWithText("Delete session").performClick()
             compose.onAllNodesWithText("Delete session").onLast().performClick()
             compose.waitUntil(10_000) { repo.db.load().sessions.none { it.name == "Project renamed" } }
+            compose.waitForIdle()
+            instrumentation.waitForIdleSync()
+            android.os.SystemClock.sleep(300)
             automation.takeScreenshot()?.let { screenshot ->
                 File(context.filesDir, "validation-home-v11.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 screenshot.recycle()

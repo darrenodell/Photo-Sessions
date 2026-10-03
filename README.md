@@ -1,3 +1,17 @@
+# Version 1.3 gallery refresh — October 4, 2026
+
+A gallery-style interface inspired by the album organization patterns in [Samsung Gallery](https://www.samsung.com/in/support/mobile-devices/how-to-create-albums-in-gallery-app-on-galaxy-device/) and [Google Photos](https://www.google.com/photos/about/), implemented with native Material 3 controls.
+
+- **Sessions:** cover-photo grid, All / Active / Complete filters, compact discovery status, and a clear Start a session action.
+- **Session detail:** responsive photo grid. Tap a photo to open it in a device photo viewer. Open **Upload & copies** for copying, sharing, Drive upload/progress/cancel, and Open in Drive. On wide windows these controls appear in a side panel.
+- **Manage:** Rename remains next to Stop / Resume; Delete session is in the three-dot Session options menu with the existing confirmation.
+- **Settings:** grouped discovery, notification, and Drive controls; consistent neutral surfaces and blue actions; readable system-bar icons.
+- **Install:** `delivery/Photo-Sessions-1.3-debug.apk`, as an update over 1.2. Version code 4; database version remains 3. Existing discovery, grouping, copying, and Drive behavior is retained.
+
+[Download version 1.3 from Google Drive](https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view). The existing shared download link is preserved.
+
+Owner confirms the app looks good and works on the Galaxy Tab A9. Friend's Android phone testing is pending. See [DRIVE-SETUP.md](DRIVE-SETUP.md) for adding test users and [VALIDATION.md](VALIDATION.md) for tested behavior and limitations. Older release notes below are historical.
+
 # Version 1.2 testing update, October 1, 2026
 
 Adds direct Google Drive upload. See [CHANGELOG.md](CHANGELOG.md) for details and [VALIDATION.md](VALIDATION.md) for checks performed.
