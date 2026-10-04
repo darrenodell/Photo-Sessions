@@ -4,7 +4,7 @@ const val SESSION_TIMEOUT = 15 * 60 * 1000L
 
 data class Photo(val key: String, val uri: String, val time: Long, val sessionId: Long = 0, val available: Boolean = true, val copyUri: String? = null, val copyState: String = "pending",
     val driveState: String = "none", val driveFileId: String? = null, val driveAccount: String? = null)
-data class Session(val id: Long, val name: String?, val start: Long, val end: Long, val complete: Boolean, val prompt: String = "pending", val manual: Boolean = false, val stoppedAt: Long? = null)
+data class Session(val id: Long, val name: String?, val start: Long, val end: Long, val complete: Boolean, val prompt: String = "pending", val manual: Boolean = false, val stoppedAt: Long? = null, val sessionDate: String = SessionLabels.date(start))
 data class Period(val sessionId: Long, val start: Long, val stop: Long? = null)
 data class Catalog(val sessions: List<Session> = emptyList(), val photos: List<Photo> = emptyList(), val periods: List<Period> = emptyList())
 
@@ -54,5 +54,17 @@ object SessionRules {
 
     fun cameraPath(path: String): Boolean = path.trim('/').lowercase(java.util.Locale.ROOT).let {
         it == "dcim/camera" || it.startsWith("dcim/camera/")
+    }
+}
+
+/** The label date is persisted separately from capture intervals and the descriptive name. */
+object SessionLabels {
+    fun date(time: Long): String = java.time.Instant.ofEpochMilli(time).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
+    fun validDate(value: String): Boolean = runCatching { java.time.LocalDate.parse(value).toString() == value && value.length == 10 }.getOrDefault(false)
+    fun title(session: Session): String = "${session.sessionDate} — ${session.name ?: "Unnamed session"}"
+    fun localPath(session: Session): String = "Pictures/Photo Sessions/" + title(session)
+        .replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_").trim().take(100) + " (${session.id})/"
+    fun unexported(photos: List<Photo>): Int = photos.count {
+        !(it.copyState == "copied" && it.copyUri != null) && !(it.driveState == "uploaded" && it.driveFileId != null)
     }
 }

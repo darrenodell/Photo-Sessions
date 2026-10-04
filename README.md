@@ -1,3 +1,14 @@
+# Version 1.4 — dates, folder renames and cover deletion — October 4, 2026
+
+- Sessions display `YYYY-MM-DD — Name`. The date defaults to the session start, stays fixed when renaming or resuming, and can be edited in **Rename → Session date**. Editing the label date does not change photo membership or capture times.
+- Renaming saves the session first, then updates device copies by stored MediaStore URIs and Drive folders by stored folder IDs, including folders from previously connected accounts. Device folders keep a session-ID suffix to distinguish identical names. Only tracked app-created copies move; unrelated files are untouched.
+- Each destination succeeds or fails independently. **Upload & copies** shows any older folder names and **Retry folder names**. Pending rename errors survive restarting the app. Drive must be authorized for the folder's original Google account; reconnect that account through Upload when needed.
+- Tap the trash button in the upper-right corner of a session cover to delete without opening it. Confirmation always explains that originals, copies and Drive folders remain. Photos with neither a readable device copy nor a recorded successful Drive upload trigger an additional warning. Drive coverage uses the last confirmed upload; remotely deleted Drive files cannot be detected offline.
+- Session deletion removes catalog/export references and cancels its upload. Discovery tombstones prevent the same photos from recreating the deleted session. No camera originals or exports are deleted.
+- APK: `delivery/Photo-Sessions-1.4-debug.apk`, version code 5. Database version 4 migrates existing session dates from their stored start times while preserving photos, exports and preferences. The shared Drive download still contains 1.3 until explicitly updated.
+
+See [VALIDATION.md](VALIDATION.md) for checks and limitations. Earlier release notes below describe historical versions.
+
 # Version 1.3 gallery refresh — October 4, 2026
 
 A gallery-style interface inspired by the album organization patterns in [Samsung Gallery](https://www.samsung.com/in/support/mobile-devices/how-to-create-albums-in-gallery-app-on-galaxy-device/) and [Google Photos](https://www.google.com/photos/about/), implemented with native Material 3 controls.

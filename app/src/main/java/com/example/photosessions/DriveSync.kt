@@ -89,6 +89,7 @@ class DriveApi(private val token: String) {
             return JSONObject(c.text().ifBlank { "{}" })
         } finally { c.disconnect() }
     }
+    fun renameFolder(id: String, name: String) { json("PATCH", "$API/files/$id?fields=id,name", JSONObject().put("name", name)) }
     fun email(): String = json("GET", "$API/about?fields=user(emailAddress)").getJSONObject("user").getString("emailAddress")
     /** True when the folder still exists, is a folder, and is not in the trash. */
     fun usableFolder(id: String): Boolean = try {
@@ -140,7 +141,11 @@ class DriveUploader(private val context: Context, private val db: CatalogDb) {
     private fun folderKey(account: String, id: Long) = "drive_folder_${account}_$id"
     fun folderUrl(id: Long): String? = account()?.let { db.state(folderKey(it, id)) }?.let { DriveQuery.folderUrl(it) }
 
-    fun upload(id: Long, progress: (done: Int, total: Int) -> Unit, stopped: () -> Boolean): UploadOutcome {
+    fun upload(id: Long, progress: (done: Int, total: Int) -> Unit, stopped: () -> Boolean): UploadOutcome = synchronized(ExportNames.lock) {
+        uploadLocked(id, progress, stopped)
+    }
+
+    private fun uploadLocked(id: Long, progress: (done: Int, total: Int) -> Unit, stopped: () -> Boolean): UploadOutcome {
         val account = account() ?: return UploadOutcome.RECONNECT
         var token = DriveAuth.token(context, account) ?: return UploadOutcome.RECONNECT
         var api = DriveApi(token)
@@ -164,7 +169,15 @@ class DriveUploader(private val context: Context, private val db: CatalogDb) {
                 // Folder was deleted or trashed in Drive: everything must be uploaded again.
                 if(stored != null) photos.forEach { db.driveStatus(it.key, account, "none", null) }
                 photos = db.load().photos.filter { it.sessionId == id }
-                call { it.createFolder(DriveQuery.folderName(session.name), root) }.also { db.put(folderKey(account, id), it) }
+                call { it.createFolder(DriveQuery.folderName(SessionLabels.title(session)), root) }.also { db.put(folderKey(account, id), it); db.put("drive_name_${account}_$id", DriveQuery.folderName(SessionLabels.title(session))); db.remove("rename_drive_${account}_$id") }
+            }
+            val wantedName = DriveQuery.folderName(SessionLabels.title(session))
+            if(db.state("drive_name_${account}_$id") != wantedName || db.state("rename_drive_${account}_$id") != null) {
+                db.put("rename_drive_${account}_$id", "Folder name needs updating.")
+                try {
+                    call { it.renameFolder(folder, wantedName) }
+                    db.put("drive_name_${account}_$id", wantedName); db.remove("rename_drive_${account}_$id")
+                } catch(e: Exception) { db.put("rename_drive_${account}_$id", e.message ?: "Drive folder rename failed.") }
             }
             val pending = photos.filter { !(it.driveState == "uploaded" && it.driveAccount == account) }
             var done = photos.size - pending.size
@@ -268,6 +281,7 @@ object UploadNotes {
         .setContentTitle("Uploading to Google Drive").setContentText("$done of $total photos")
         .setProgress(total.coerceAtLeast(1), done, false).setOngoing(done < total).setOnlyAlertOnce(true))
     fun finished(context: Context, id: Long, db: CatalogDb) {
+        if(db.load().sessions.none { it.id == id }) return
         val photos = db.load().photos.filter { it.sessionId == id }
         val failed = photos.count { it.driveState == "failed" }
         post(context, id, NotificationCompat.Builder(context, CHANNEL).setAutoCancel(true)

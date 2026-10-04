@@ -138,7 +138,7 @@ class CatalogDbTest {
         assertEquals("Old name", db.load().sessions.single().name)
         assertEquals("pending", db.load().photos.single().copyState)
         assertEquals("off", db.state("notifications"))
-        assertEquals(3, db.readableDatabase.version)
+        assertEquals(4, db.readableDatabase.version)
         db.readableDatabase.rawQuery("PRAGMA foreign_key_check", null).use { assertFalse(it.moveToFirst()) }
     }
 }

@@ -109,7 +109,7 @@ class OrganizerFlowTest {
             compose.onNodeWithText("Active").performClick()
             compose.onNodeWithText("No active sessions").assertIsDisplayed()
             compose.onNodeWithText("Show all sessions").performClick()
-            compose.onAllNodesWithText("Unnamed session").assertCountEquals(2)
+            compose.onAllNodesWithText("Unnamed session", substring = true).assertCountEquals(2)
             compose.waitUntil(10_000) {
                 compose.onAllNodes(hasContentDescription("Camera photo taken", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size == 2
             }
@@ -125,14 +125,14 @@ class OrganizerFlowTest {
             compose.onNodeWithText("Session name").performTextInput("  Garage wiring  ")
             compose.onNodeWithText("Save").performScrollTo().performClick()
             compose.waitUntil(10_000) { repo.db.load().sessions.single { it.id == older.id }.name == "Garage wiring" }
-            compose.onNodeWithText("Garage wiring").assertIsDisplayed()
+            compose.onNodeWithText("Garage wiring", substring = true).assertIsDisplayed()
             // Notification routing updates Activity.intent. ActivityScenario matches its
             // original launch intent, so use the lifecycle monitor for this recreation check.
             val originalActivity = resumedActivity()!!
             instrumentation.runOnMainSync { originalActivity.recreate() }
             compose.waitUntil(10_000) { resumedActivity()?.let { it !== originalActivity } == true }
             compose.waitForIdle()
-            compose.onNodeWithText("Garage wiring").assertIsDisplayed()
+            compose.onNodeWithText("Garage wiring", substring = true).assertIsDisplayed()
             compose.waitUntil(10_000) {
                 compose.onAllNodes(hasContentDescription("Camera photo taken", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size == 2
             }
@@ -166,20 +166,20 @@ class OrganizerFlowTest {
             instrumentation.runOnMainSync {
                 sessionActivity.startActivity(Intent(context, MainActivity::class.java).putExtra("open_session_id", older.id))
             }
-            compose.waitUntil(10_000) { compose.onAllNodesWithText("Garage wiring").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Garage wiring", substring = true).fetchSemanticsNodes().isNotEmpty() }
             if(compose.onAllNodesWithContentDescription("Show upload and copy controls").fetchSemanticsNodes().isNotEmpty()) {
                 compose.onNodeWithContentDescription("Show upload and copy controls").performClick()
             }
             compose.onNodeWithText("Copy pending photos").performScrollTo().performClick()
             compose.waitUntil(10_000) { repo.db.load().photos.filter { it.sessionId == older.id }.all { it.copyState == "copied" } }
-            val copied = repo.db.load().photos.filter { it.sessionId == older.id }
+            var copied = repo.db.load().photos.filter { it.sessionId == older.id }
             assertTrue(copied.all { it.copyState == "copied" })
             copied.forEach { p ->
                 val copyUri = Uri.parse(p.copyUri!!)
                 uris += copyUri
                 assertEquals(hash(Uri.parse(p.uri)), hash(copyUri))
                 context.contentResolver.query(copyUri, arrayOf(MediaStore.MediaColumns.RELATIVE_PATH), null, null, null)!!.use {
-                    assertTrue(it.moveToFirst()); assertTrue(it.getString(0).startsWith("Pictures/Photo Sessions/Garage wiring"))
+                    assertTrue(it.moveToFirst()); assertTrue(it.getString(0).startsWith("Pictures/Photo Sessions/${older.sessionDate} — Garage wiring"))
                 }
             }
             repo.copy(older.id)
@@ -189,6 +189,22 @@ class OrganizerFlowTest {
             assertEquals(2, share.clipData!!.itemCount)
             assertTrue(share.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
             repo.name(older.id, "Renamed workshop")
+            copied.forEach { p ->
+                context.contentResolver.query(Uri.parse(p.copyUri!!), arrayOf(MediaStore.MediaColumns.RELATIVE_PATH), null, null, null)!!.use {
+                    assertTrue(it.moveToFirst()); assertEquals(SessionLabels.localPath(repo.db.load().sessions.single { session -> session.id == older.id }), it.getString(0))
+                }
+                assertEquals(hash(Uri.parse(p.uri)), hash(Uri.parse(p.copyUri!!)))
+            }
+            // A missing device copy must warn before deletion, and copying can recreate it.
+            val missingCopy = copied.first().copyUri!!
+            context.contentResolver.delete(Uri.parse(missingCopy), null, null)
+            uris.remove(Uri.parse(missingCopy))
+            assertEquals(1, files.unexported(copied))
+            repo.copy(older.id)
+            copied = repo.db.load().photos.filter { it.sessionId == older.id }
+            assertNotEquals(missingCopy, copied.first().copyUri)
+            assertEquals(0, files.unexported(copied))
+            uris += Uri.parse(copied.first().copyUri!!)
             repo.scan()
             assertEquals(3, repo.db.load().photos.size) // Copies must never feed discovery.
             assertEquals("Renamed workshop", repo.db.load().sessions.single { it.id == older.id }.name)
@@ -215,8 +231,9 @@ class OrganizerFlowTest {
             compose.waitUntil(10_000) { !repo.db.load().sessions.single { it.name == "New project" }.complete }
             compose.onNodeWithText("Rename").performScrollTo().performClick()
             compose.onNodeWithText("Session name").performTextReplacement("Project renamed")
+            compose.onNodeWithText("Session date").performTextReplacement("2026-10-04")
             compose.onNodeWithText("Save").performScrollTo().performClick()
-            compose.waitUntil(10_000) { repo.db.load().sessions.any { it.name == "Project renamed" } }
+            compose.waitUntil(10_000) { repo.db.load().sessions.any { it.name == "Project renamed" && it.sessionDate == "2026-10-04" } }
             compose.waitForIdle()
             instrumentation.waitForIdleSync()
             android.os.SystemClock.sleep(300)
@@ -224,10 +241,20 @@ class OrganizerFlowTest {
                 File(context.filesDir, "validation-session-v11.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 screenshot.recycle()
             }
-            compose.onNodeWithContentDescription("Session options").performClick()
-            compose.onNodeWithText("Delete session").performClick()
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithContentDescription("Delete 2026-10-04 — Project renamed").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Checking device copies…").fetchSemanticsNodes().isEmpty() }
             compose.onAllNodesWithText("Delete session").onLast().performClick()
             compose.waitUntil(10_000) { repo.db.load().sessions.none { it.name == "Project renamed" } }
+            compose.onNodeWithContentDescription("Delete ${SessionLabels.title(repo.db.load().sessions.single { it.id == newer.id })}").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Warning:", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Warning:", substring = true).assertIsDisplayed()
+            compose.waitForIdle(); instrumentation.waitForIdleSync(); android.os.SystemClock.sleep(300)
+            automation.takeScreenshot()?.let { screenshot ->
+                File(context.filesDir, "validation-delete-v14.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }; screenshot.recycle()
+            }
+            compose.onNodeWithText("Cancel").performClick()
+            assertTrue(repo.db.load().sessions.any { it.id == newer.id })
             compose.waitForIdle()
             instrumentation.waitForIdleSync()
             android.os.SystemClock.sleep(300)

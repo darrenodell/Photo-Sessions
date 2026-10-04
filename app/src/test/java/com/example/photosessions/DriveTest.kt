@@ -73,7 +73,7 @@ class DriveStateTest {
         legacy.execSQL("INSERT INTO photos VALUES('k1','content://media/1',100,1,1,'content://media/copy1','copied')")
         legacy.version = 2; legacy.close()
         db = CatalogDb(context, name)
-        assertEquals(3, db.readableDatabase.version)
+        assertEquals(4, db.readableDatabase.version)
         val photo = db.load().photos.single()
         assertEquals("copied", photo.copyState); assertEquals("none", photo.driveState)
         assertEquals("Garage", db.load().sessions.single().name)

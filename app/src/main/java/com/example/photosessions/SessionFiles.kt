@@ -9,12 +9,25 @@ import androidx.core.net.toUri
 
 /** Only writes copies owned by this app; never writes to camera originals. */
 class SessionFiles(private val context: Context, private val db: CatalogDb) {
+    /** Local copies are checked on-device; Drive coverage uses the last confirmed upload record. */
+    fun unexported(photos: List<Photo>): Int = SessionLabels.unexported(photos.map { photo ->
+        if(photo.copyState == "copied" && photo.copyUri != null &&
+            !runCatching { context.contentResolver.openInputStream(photo.copyUri.toUri())?.use { true } == true }.getOrDefault(false))
+            photo.copy(copyState = "unavailable") else photo
+    })
     fun folder(id: Long): String? = db.state("folder_$id")
     fun copyPending(id: Long) {
         val catalog = db.load()
         val session = catalog.sessions.single { it.id == id }
         require(!session.name.isNullOrBlank()) { "Name this session before copying photos." }
-        val path = folder(id) ?: ("Pictures/Photo Sessions/" + session.name.replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_").trim().take(80).ifBlank { "Session" } + " ($id)/").also { db.put("folder_$id", it) }
+        // Missing copies must be eligible for recreation before moving the remaining copies.
+        catalog.photos.filter { it.sessionId == id && it.copyState == "copied" && it.copyUri != null }.forEach { photo ->
+            try {
+                if(context.contentResolver.openInputStream(photo.copyUri!!.toUri())?.use { true } != true) db.copyStatus(photo.key, null, "failed")
+            } catch(_: java.io.FileNotFoundException) { db.copyStatus(photo.key, null, "failed") }
+        }
+        rename(id)
+        val path = folder(id) ?: SessionLabels.localPath(session).also { db.put("folder_$id", it) }
         val resolver = context.contentResolver
         var failures = 0
         for(photo in catalog.photos.filter { it.sessionId == id }) {
@@ -59,6 +72,24 @@ class SessionFiles(private val context: Context, private val db: CatalogDb) {
             }
         }
         check(failures == 0) { "$failures photos could not be copied. Check storage and photo access, then retry." }
+    }
+
+    /** Move only tracked app-owned copies by their stable MediaStore URI, never by a name search. */
+    fun rename(id: Long) {
+        val old = folder(id) ?: return
+        val session = db.load().sessions.single { it.id == id }
+        val target = SessionLabels.localPath(session)
+        if(old == target && db.state("rename_local_$id") == null) return
+        db.put("rename_local_$id", "Folder name needs updating.")
+        val resolver = context.contentResolver
+        val failures = db.load().photos.filter { it.sessionId == id && it.copyUri != null }.count { photo ->
+            runCatching {
+                check(resolver.update(photo.copyUri!!.toUri(), ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, target) }, null, null) == 1) { "A tracked copy is unavailable." }
+            }.isFailure
+        }
+        check(failures == 0) { "$failures local copies could not be moved. Check storage and photo access, then retry folder names." }
+        db.put("folder_$id", target)
+        db.remove("rename_local_$id")
     }
 
     fun shareIntent(id: Long): Intent {

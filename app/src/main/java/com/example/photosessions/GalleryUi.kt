@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
@@ -28,8 +29,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.text.DateFormat
-import java.util.Date
 
 // A quiet gallery palette: neutral surfaces keep the photographs in focus.
 @Composable
@@ -101,7 +100,7 @@ internal fun StartSessionButton(enabled: Boolean, onClick: () -> Unit) {
 @Composable
 internal fun SessionLibrary(
     catalog: Catalog, refresh: Long, driveAccount: String?, busy: Boolean,
-    onStart: () -> Unit, onOpen: (Long) -> Unit, status: @Composable () -> Unit
+    onStart: () -> Unit, onOpen: (Long) -> Unit, onDelete: (Long) -> Unit, status: @Composable () -> Unit
 ) {
     var filter by rememberSaveable { mutableStateOf("All") }
     val photosBySession = remember(catalog.photos) { catalog.photos.groupBy { it.sessionId } }
@@ -144,10 +143,15 @@ internal fun SessionLibrary(
                 Box {
                     Thumbnail(photos.firstOrNull { it.available } ?: photos.firstOrNull(), refresh, Modifier.fillMaxWidth().aspectRatio(1f))
                     Box(Modifier.align(Alignment.TopStart).padding(10.dp)) { SessionBadge(!session.complete) }
+                    Surface(Modifier.align(Alignment.TopEnd).padding(6.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)) {
+                        IconButton(enabled = !busy, onClick = { onDelete(session.id) }) {
+                            Icon(Icons.Outlined.Delete, "Delete ${SessionLabels.title(session)}", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 }
                 Column(Modifier.padding(top = 12.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(session.name ?: "Unnamed session", style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text("${photos.size} ${if(photos.size == 1) "photo" else "photos"}  •  ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(session.start))}",
+                    Text(SessionLabels.title(session), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("${photos.size} ${if(photos.size == 1) "photo" else "photos"}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val uploaded = photos.count { it.driveState == "uploaded" && driveAccount != null && it.driveAccount == driveAccount }
                     if(uploaded > 0) Text("$uploaded in Drive", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)

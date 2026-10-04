@@ -2,6 +2,15 @@
 
 Track requested changes, implementation, builds, and testing feedback here. Pending requests are not shipped features.
 
+## 1.4 — dates and export folder names — 2026-10-04
+
+- Implemented the uploaded planned changes, with the owner's requested trash button directly on session cover images.
+- Added a separately persisted, editable ISO date to the session label and export names. Renaming/resuming preserves it; changing it does not regroup photos. Schema 3 → 4 fills existing dates from start times.
+- Added independent device/Drive folder rename attempts after saving the session. Device copies move using their stored URIs; Drive folders are renamed by stored IDs for each account. Successful names are recorded; failures are persisted with a retry action. Uploads retry the associated Drive folder rename as well.
+- Serialized export changes against in-flight uploads, kept per-session device folder suffixes, and retained recreation of missing device copies.
+- Added cover deletion confirmation and an additional warning for photos lacking a readable device copy or recorded successful Drive upload. Deletes only catalog metadata/export references; retains originals, exports, and discovery replay protection.
+- Version 1.4 / code 5; no Google Cloud publishing changes or shared APK upload in this pass.
+
 ## 1.3 — gallery refresh — 2026-10-04
 
 ### Testing and delivery

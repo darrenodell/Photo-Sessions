@@ -77,9 +77,13 @@ class Repository(private val context: Context) {
         return id
     }
     @Synchronized fun stop(id: Long) { scan(); db.stop(id, System.currentTimeMillis()); changed() }
-    @Synchronized fun delete(id: Long) { db.deleteSession(id); Prompts.cancel(context, id); changed() }
-    @Synchronized fun copy(id: Long) { try { SessionFiles(context, db).copyPending(id) } finally { changed() } }
-    @Synchronized fun name(id: Long, value: String?) { db.name(id, value); Prompts.cancel(context, id); changed() }
+    @Synchronized fun delete(id: Long) { DriveWork.cancel(context, id); synchronized(ExportNames.lock) { db.deleteSession(id) }; Prompts.cancel(context, id); NotificationManagerCompat.from(context).cancel("upload-$id", 2); changed() }
+    @Synchronized fun copy(id: Long) { try { synchronized(ExportNames.lock) { SessionFiles(context, db).copyPending(id) } } finally { changed() } }
+    @Synchronized fun name(id: Long, value: String?, date: String? = null) {
+        synchronized(ExportNames.lock) { db.name(id, value, date); Prompts.cancel(context, id); changed(); ExportNames(context, db).retry(id) }
+        changed()
+    }
+    fun retryNames(id: Long) { try { ExportNames(context, db).retry(id) } finally { changed() } }
     @Synchronized fun notifications(enabled: Boolean) {
         db.put("notifications", if(enabled) "on" else "off")
         if(!enabled) NotificationManagerCompat.from(context).cancelAll()

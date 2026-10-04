@@ -2,6 +2,17 @@
 
 Implementation date: 2026-09-30. Host: Apple Silicon macOS. Scope: the MVP in SPEC.md.
 
+## Version 1.4 checks (2026-10-04)
+
+- Project-local `testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest`: passed. 46 host tests pass; lint has zero errors and eight existing warnings.
+- Added migration 3 → 4 preservation tests, start-date persistence across rename/resume/discovery/restart, ISO-date validation, local folder sanitization, export warning coverage, independent destination failures, durable retry state, stored-ID use, and metadata-only deletion/reference cleanup. Prior migrations 1 and 2 continue to pass.
+- Final disposable Android 16 emulator flow: passed at 1200 × 1920 / 600 dp. Tests exercise date editing, cover-image deletion without opening the session, warning/cancel for unexported photos, readable-copy checks after external deletion, missing-copy recreation, real MediaStore folder moves by stored copy URIs, unchanged copy/original bytes, copy idempotency, share grants, notifications, start/stop/resume, and discovery replay protection.
+- Installed version 1.4 / code 5 as an update on the connected Galaxy Tab A9. Backed up app databases before and after. Compared all preexisting columns: 2 sessions, 6 photo records, and 4 periods were unchanged; preferences and export references were preserved. Schema migrated 3 → 4 and existing label dates were populated. The existing photo availability flags were preserved. No synthetic fixtures or destructive tests were run on the owner's tablet.
+- Visually inspected the tablet library with date labels and cover trash buttons; left the updated app open. Inspected the emulator gallery, detail screen and deletion warning. Public validation images use synthetic fixtures: `validation/library-v1.4.png`, `validation/session-v1.4.png`, `validation/delete-warning-v1.4.png`.
+- Built local delivery `delivery/Photo-Sessions-1.4-debug.apk`. Shared Google Drive APK remains version 1.3; no upload or publishing change requested this pass.
+- Live Android OAuth authorization and Drive folder PATCH renames were not exercised. Independent rename failures/retries use injected test operations; previous live upload acceptance remains historical. Drive upload records cannot establish whether a user subsequently deleted files remotely while offline.
+- Storage rename method follows [Android MediaStore guidance](https://developer.android.com/training/data-storage/shared/media); Drive folder names use [files.update](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/update) against stored IDs. Local virtual folders are moved by updating each tracked app-created copy's `RELATIVE_PATH`; unrelated files remain untouched. Partial moves retain the old stored folder name and retry the same copy URIs until all updates succeed.
+
 ## Version 1.3 checks (2026-10-04)
 
 - Owner feedback after installation: app looks good and works on their tablet. This is user-reported acceptance; it does not imply that every individual device/Drive/background scenario was tested. Friend's Android phone test remains pending.

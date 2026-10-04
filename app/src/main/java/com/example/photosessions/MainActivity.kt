@@ -108,7 +108,7 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
     var sessionId by rememberSaveable { mutableLongStateOf(0) }
     var permissionsTick by remember { mutableIntStateOf(0) }
     var newSession by rememberSaveable { mutableStateOf(false) }
-    var deleting by remember { mutableStateOf(false) }
+    var deletingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -165,6 +165,7 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
         var title by rememberSaveable { mutableStateOf("") }
         AlertDialog(onDismissRequest = { if(!busy) newSession = false }, title = { Text("Start a session") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Date: ${SessionLabels.date(System.currentTimeMillis())}")
                 Text("Give it a name, then take photos with your Camera app. Any active session will be completed.")
                 OutlinedTextField(value = title, onValueChange = { title = it.take(200) }, label = { Text("Session name") }, singleLine = true)
             } }, confirmButton = { TextButton(enabled = title.isNotBlank() && !busy, onClick = {
@@ -176,20 +177,32 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
                 }
             }) { Text("Start session") } }, dismissButton = { TextButton(enabled = !busy, onClick = { newSession = false }) { Text("Cancel") } })
     }
-    if(deleting && current != null) AlertDialog(onDismissRequest = { deleting = false }, title = { Text("Delete session?") },
-        text = { Text("Remove this session from the app? Camera originals and copied files will stay on your tablet. This cannot be undone.") },
-        confirmButton = { TextButton(enabled = !busy, onClick = {
-            val id = sessionId
+    val deletingSession = data.catalog.sessions.find { it.id == deletingId }
+    val deletionPhotos = data.catalog.photos.filter { it.sessionId == deletingSession?.id }
+    var deletionWarning by remember(deletingId, deletionPhotos) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(deletingId, deletionPhotos) {
+        if(deletingSession != null) deletionWarning = withContext(Dispatchers.IO) { SessionFiles(context, repository.db).unexported(deletionPhotos) }
+    }
+    if(deletingSession != null) AlertDialog(onDismissRequest = { if(!busy) deletingId = null }, title = { Text("Delete session?") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(SessionLabels.title(deletingSession), style = MaterialTheme.typography.titleMedium)
+            if(deletionWarning == null) Text("Checking device copies…")
+            val unexported = deletionWarning ?: 0
+            if(unexported > 0) Text("Warning: $unexported ${if(unexported == 1) "photo has" else "photos have"} no device copy or Google Drive upload. Copy or upload them first if you want to keep this grouping.", color = MaterialTheme.colorScheme.error)
+            Text("The session will be removed from Photo Sessions. Your original photos, device copies and Google Drive folders will not be deleted. This cannot be undone.")
+        } },
+        confirmButton = { TextButton(enabled = !busy && deletionWarning != null, onClick = {
+            val id = deletingSession.id
+            busy = true
             scope.launch {
-                busy = true
-                try { withContext(Dispatchers.IO) { repository.delete(id) }; deleting = false; screen = "home" }
+                try { withContext(Dispatchers.IO) { repository.delete(id) }; deletingId = null; if(sessionId == id) screen = "home" }
                 catch(e: Exception) { error = e.message }
                 finally { busy = false }
             }
         }) { Text("Delete session", color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = { deleting = false }) { Text("Cancel") } })
+        dismissButton = { TextButton(enabled = !busy, onClick = { deletingId = null }) { Text("Cancel") } })
     if(choosingNetwork && current != null) AlertDialog(onDismissRequest = { choosingNetwork = false }, title = { Text("Upload to Google Drive") },
-        text = { Text("Photos go to My Drive / $DRIVE_ROOT_FOLDER / ${DriveQuery.folderName(current.name)}. Only photos not already uploaded are sent. Uploading uses about as much data as the photos' size.") },
+        text = { Text("Photos go to My Drive / $DRIVE_ROOT_FOLDER / ${DriveQuery.folderName(SessionLabels.title(current))}. Only photos not already uploaded are sent. Uploading uses about as much data as the photos' size.") },
         confirmButton = { Column(horizontalAlignment = Alignment.End) {
             TextButton(onClick = { choosingNetwork = false; startUpload(current.id, true) }) { Text("Wait for Wi-Fi") }
             TextButton(onClick = { choosingNetwork = false; startUpload(current.id, false) }) { Text("Upload now (Wi-Fi or mobile data)") }
@@ -213,7 +226,7 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
                         DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, enabled = !busy,
                             onClick = { sessionMenu = false; screen = "name" })
                         DropdownMenuItem(text = { Text("Delete session", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(Icons.Outlined.Delete, null) }, enabled = !busy,
-                            onClick = { sessionMenu = false; deleting = true })
+                            onClick = { sessionMenu = false; deletingId = current.id })
                     }
                 }
             })
@@ -249,14 +262,14 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
                             if(data.driveAccount != null) TextButton(onClick = { disconnecting = true }) { Text("Disconnect Google Drive") }
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Photo Sessions 1.3", style = MaterialTheme.typography.labelLarge)
+                            Text("Photo Sessions 1.4", style = MaterialTheme.typography.labelLarge)
                             data.baseline?.let { Text("Monitoring since ${date(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                             data.lastScan?.let { Text("Last successful scan: ${date(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }
                     }
                 }
                 screen == "home" -> SessionLibrary(data.catalog, revision + resumeCount, data.driveAccount, busy,
-                    onStart = { newSession = true }, onOpen = { sessionId = it; screen = "session" }) {
+                    onStart = { newSession = true }, onOpen = { sessionId = it; screen = "session" }, onDelete = { deletingId = it }) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         when {
                             data.baseline == null || access != PhotoAccess.FULL -> Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(16.dp)) {
@@ -292,9 +305,10 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
                 current == null -> Column(Modifier.padding(24.dp)) { Text("This session is unavailable."); TextButton(onClick = { screen = "home" }) { Text("Go to sessions") } }
                 screen == "name" -> {
                     var name by rememberSaveable(sessionId) { mutableStateOf(current.name.orEmpty()) }
+                    var sessionDate by rememberSaveable(sessionId) { mutableStateOf(current.sessionDate) }
                     var saving by remember { mutableStateOf(false) }
                     fun finish(value: String?) { saving = true; scope.launch {
-                        try { withContext(Dispatchers.IO) { repository.name(sessionId, value) }; screen = "session" }
+                        try { withContext(Dispatchers.IO) { repository.name(sessionId, value, sessionDate) }; screen = "session" }
                         catch (_: Exception) { error = "Could not save. Please try again." }
                         finally { saving = false }
                     } }
@@ -303,8 +317,11 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
                         Text("${currentPhotos.size} photos", style = MaterialTheme.typography.headlineSmall)
                         Text("${date(current.start)} — ${date(current.end)}")
                         OutlinedTextField(value = name, onValueChange = { name = it.take(200) }, modifier = Modifier.fillMaxWidth(), label = { Text("Session name") }, placeholder = { Text("e.g. Garage wiring") }, singleLine = true, supportingText = { Text("Choose any name, up to 200 characters.") })
-                        Button(onClick = { finish(name.trim()) }, enabled = name.isNotBlank() && !saving, modifier = Modifier.fillMaxWidth()) { Text("Save") }
-                        if(current.name == null) OutlinedButton(onClick = { finish(null) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) { Text("Skip") }
+                        OutlinedTextField(value = sessionDate, onValueChange = { sessionDate = it.take(10) }, modifier = Modifier.fillMaxWidth(), label = { Text("Session date") }, singleLine = true,
+                            isError = !SessionLabels.validDate(sessionDate), supportingText = { Text("YYYY-MM-DD · Defaults to the session start date.") })
+                        Text("Preview: $sessionDate — ${name.ifBlank { "Unnamed session" }}", style = MaterialTheme.typography.bodySmall)
+                        Button(onClick = { finish(name.trim()) }, enabled = name.isNotBlank() && SessionLabels.validDate(sessionDate) && !saving, modifier = Modifier.fillMaxWidth()) { Text("Save") }
+                        if(current.name == null) OutlinedButton(onClick = { finish(null) }, enabled = !saving && SessionLabels.validDate(sessionDate), modifier = Modifier.fillMaxWidth()) { Text("Skip") }
                         if(current.name == null) Text("Skipping keeps this session unnamed. You can name it here later.")
                     }
                 }
@@ -321,6 +338,7 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
                             WorkInfo.State.RUNNING -> if(workTotal > 0) "Uploading $workDone of $workTotal…" else "Connecting to Google Drive…"
                             WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> "Upload queued — open for details"
                             else -> when {
+                                ExportNames(context, repository.db).problems(current.id).isNotEmpty() -> "Folder names need updating"
                                 data.driveReconnect -> "Reconnect to Google Drive"
                                 failedUploads > 0 -> "$failedUploads uploads need attention"
                                 else -> "${currentPhotos.count { it.copyState == "copied" }} copied  •  $uploaded in Drive"
@@ -333,7 +351,7 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
                         header = {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 SessionBadge(!current.complete)
-                                Text(current.name ?: "Unnamed session", style = MaterialTheme.typography.headlineLarge)
+                                Text(SessionLabels.title(current), style = MaterialTheme.typography.headlineLarge)
                                 Text("${currentPhotos.size} photos  •  ${date(current.start)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(enabled = !busy, onClick = { if(current.complete) {
@@ -345,6 +363,15 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
                             }
                         },
                         tools = {
+                            val renameProblems = remember(current.id, revision) { ExportNames(context, repository.db).problems(current.id) }
+                            if(renameProblems.isNotEmpty()) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Folder names need updating", style = MaterialTheme.typography.titleSmall)
+                                    Text("Your session name was saved. Some exported folders still use an older name.", style = MaterialTheme.typography.bodySmall)
+                                    renameProblems.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                    TextButton(enabled = !busy, onClick = { action { repository.retryNames(current.id) } }) { Text("Retry folder names") }
+                                }
+                            }
                             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text("${currentPhotos.count { it.copyState == "copied" }} copied · ${currentPhotos.count { it.copyState != "copied" }} need copying", style = MaterialTheme.typography.titleSmall)
@@ -368,7 +395,7 @@ private fun Organizer(repository: Repository, requestedId: Long, openId: Long, r
                                             failedUploads > 0 -> "$failedUploads photos could not be read. Upload again to retry them."
                                             data.driveAccount == null -> "Connect your Google account to upload this session."
                                             uploaded == currentPhotos.size && uploaded > 0 -> "All photos are in Drive."
-                                            else -> "Uploads go to My Drive / $DRIVE_ROOT_FOLDER / ${DriveQuery.folderName(current.name)}."
+                                            else -> "Uploads go to My Drive / $DRIVE_ROOT_FOLDER / ${DriveQuery.folderName(SessionLabels.title(current))}."
                                         }
                                     }, style = MaterialTheme.typography.bodySmall)
                                     if(work?.state == WorkInfo.State.RUNNING && workTotal > 0)
