@@ -5,7 +5,7 @@
 - Each destination succeeds or fails independently. **Upload & copies** shows any older folder names and **Retry folder names**. Pending rename errors survive restarting the app. Drive must be authorized for the folder's original Google account; reconnect that account through Upload when needed.
 - Tap the trash button in the upper-right corner of a session cover to delete without opening it. Confirmation always explains that originals, copies and Drive folders remain. Photos with neither a readable device copy nor a recorded successful Drive upload trigger an additional warning. Drive coverage uses the last confirmed upload; remotely deleted Drive files cannot be detected offline.
 - Session deletion removes catalog/export references and cancels its upload. Discovery tombstones prevent the same photos from recreating the deleted session. No camera originals or exports are deleted.
-- APK: `delivery/Photo-Sessions-1.4-debug.apk`, version code 5. Database version 4 migrates existing session dates from their stored start times while preserving photos, exports and preferences. The shared Drive download still contains 1.3 until explicitly updated.
+- APK: `delivery/Photo-Sessions-1.4-debug.apk`, version code 5. Database version 4 migrates existing session dates from their stored start times while preserving photos, exports and preferences. The shared Drive download now contains 1.4 at the same file ID and link.
 
 See [VALIDATION.md](VALIDATION.md) for checks and limitations. Earlier release notes below describe historical versions.
 

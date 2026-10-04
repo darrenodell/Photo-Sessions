@@ -9,7 +9,8 @@ Track requested changes, implementation, builds, and testing feedback here. Pend
 - Added independent device/Drive folder rename attempts after saving the session. Device copies move using their stored URIs; Drive folders are renamed by stored IDs for each account. Successful names are recorded; failures are persisted with a retry action. Uploads retry the associated Drive folder rename as well.
 - Serialized export changes against in-flight uploads, kept per-session device folder suffixes, and retained recreation of missing device copies.
 - Added cover deletion confirmation and an additional warning for photos lacking a readable device copy or recorded successful Drive upload. Deletes only catalog metadata/export references; retains originals, exports, and discovery replay protection.
-- Version 1.4 / code 5; no Google Cloud publishing changes or shared APK upload in this pass.
+- Version 1.4 / code 5. Uploaded the new APK to the existing shared Drive file on 2026-10-04, preserving folder and anyone-with-link read access: https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view?usp=drivesdk
+- No Google Cloud authorization publishing changes.
 
 ## 1.3 — gallery refresh — 2026-10-04
 
