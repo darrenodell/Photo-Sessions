@@ -8,7 +8,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <application android:name=".SessionApp" android:allowBackup="false" android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules" android:label="Photo Sessions"
-        android:icon="@drawable/ic_launcher" android:theme="@style/AppTheme" android:supportsRtl="true">
+        android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
+        android:theme="@style/AppTheme" android:supportsRtl="true">
+        <receiver android:name=".ExtendSessionReceiver" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

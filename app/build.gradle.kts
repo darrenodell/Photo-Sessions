@@ -9,8 +9,8 @@ android {
         applicationId = "com.example.photosessions"
         minSdk = 29
         targetSdk = 37
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 14
+        versionName = "1.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }

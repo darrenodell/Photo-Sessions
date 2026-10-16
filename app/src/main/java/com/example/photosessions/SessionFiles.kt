@@ -10,11 +10,15 @@ import androidx.core.net.toUri
 /** Only writes copies owned by this app; never writes to camera originals. */
 class SessionFiles(private val context: Context, private val db: CatalogDb) {
     /** Local copies are checked on-device; Drive coverage uses the last confirmed upload record. */
-    fun unexported(photos: List<Photo>): Int = SessionLabels.unexported(photos.map { photo ->
-        if(photo.copyState == "copied" && photo.copyUri != null &&
-            !runCatching { context.contentResolver.openInputStream(photo.copyUri.toUri())?.use { true } == true }.getOrDefault(false))
-            photo.copy(copyState = "unavailable") else photo
-    })
+    fun unexported(photos: List<Photo>): Int {
+        val albums = db.states("photos_album_").values.toSet()
+        val added = db.states("photos_item_").filterValues { it in albums }.keys
+        return SessionLabels.unexported(photos.filterNot { photo -> added.any { it.endsWith("_${photo.sessionId}_${photo.key}") } }.map { photo ->
+            if(photo.copyState == "copied" && photo.copyUri != null &&
+                !runCatching { context.contentResolver.openInputStream(photo.copyUri.toUri())?.use { true } == true }.getOrDefault(false))
+                photo.copy(copyState = "unavailable") else photo
+        })
+    }
     fun folder(id: Long): String? = db.state("folder_$id")
     fun copyPending(id: Long) {
         val catalog = db.load()
@@ -94,10 +98,10 @@ class SessionFiles(private val context: Context, private val db: CatalogDb) {
 
     fun shareIntent(id: Long): Intent {
         val photos = db.load().photos.filter { it.sessionId == id }
-        check(photos.isNotEmpty()) { "There are no photos to upload yet." }
-        check(photos.all { it.copyState == "copied" && it.copyUri != null }) { "Copy pending photos before uploading." }
+        check(photos.isNotEmpty()) { "There are no photos to share yet." }
+        check(photos.all { it.copyState == "copied" && it.copyUri != null }) { "Use Copy Locally to finish copying this session before sharing." }
         val uris = ArrayList(photos.map { it.copyUri!!.toUri() })
-        uris.forEach { uri -> check(context.contentResolver.openInputStream(uri)?.use { true } == true) { "A copy is unavailable. Copy pending photos again." } }
+        uris.forEach { uri -> check(context.contentResolver.openInputStream(uri)?.use { true } == true) { "A copy is unavailable. Use Copy Locally to recreate missing copies." } }
         return Intent(Intent.ACTION_SEND_MULTIPLE).apply {
             type = "image/*"
             putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)

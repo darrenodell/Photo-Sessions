@@ -6,7 +6,30 @@ local.properties
 .idea/
 *.iml
 *.jks
+*.keystore
+*.pem
+*.key
+*.p12
+*.pfx
 .DS_Store
+
+# Local credentials and device data
+.env
+.env.*
+!.env.example
+.netrc
+.ttnetrc
+client_secret*.json
+credentials*.json
+google-services.json
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+
+# Local handoff for a separate application
+/NOTE-TO-SELF-BRIEF.md
 
 # Built binaries live on Google Drive, not in git
 delivery/*.apk

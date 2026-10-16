@@ -1,6 +1,77 @@
 # Changelog
 
+## 1.7 — 2026-10-16
+
+- Discover new screenshots in Pictures/Screenshots and DCIM/Screenshots alongside camera photos, including subfolders and external media volumes. Downloads and Photo Sessions exports remain excluded.
+- Persist the screenshot discovery start on the first run of this version. Older screenshots are not backfilled; camera discovery retains its existing baseline. No schema migration or changes to existing session membership.
+- Screenshots use the same automatic inactivity grouping and fixed manual deadlines as camera photos. Gallery guidance and accessibility labels now cover both.
+- Reuse original image types and bytes for local copies, sharing, Drive uploads and Google Photos uploads. Version code 14.
+- Build/lint and all 68 host tests passed. Mixed-image discovery, actual gallery/copy controls, PNG preservation, sharing preparation and duplicate prevention passed on the owner's Galaxy Tab A9. Installed in place with catalog/settings preserved and test fixtures removed; uploaded to the existing shared Drive APK with its link and sharing retained.
+
+## 1.6.3 — 2026-10-12
+
+- Remove the “Not copied” caption and its padding beneath photos that have not been copied locally. Existing copied/retry status labels remain.
+- Version code 13; display-only change with no database or transfer changes. Installed and visually checked on the owner’s tablet; uploaded to the existing shared Drive APK without changing its link.
+
+## 1.6.2 — 2026-10-12
+
+- Show Open in Google Photos only after at least one photo is recorded as added and the session has no active Photos upload. Previously the link appeared as soon as an album was created, before its first upload finished.
+- Investigated a transient Google Photos “Can’t find link” error on the owner’s tablet. The same saved URL subsequently opened the correct album and photo in both Chrome and Google Photos; uploads were successful. This change prevents premature opening during upload, but does not control Google’s album processing or account selection.
+- Version code 12; no database migration or changes to upload bytes, account permissions or album sharing. Installed and verified on the owner’s tablet; published in place to the shared Drive APK with the same link.
+
+## 1.6.1 — 2026-10-11
+
+- Add 30 minutes alongside 1 hour and 2 hours for manual sessions, resume/extend controls, and all completion notifications. Presets wrap on narrow screens.
+- Custom hours accepts only whole numbers from 1 to 168; numeric keyboard and concise guidance replace fractional-hour instructions. Decimal input is rejected without silently changing its value.
+- Preserve existing fixed timers and accept quick actions from notifications posted by version 1.6. No database migration; version code 11.
+- Completed validation and installed in place on the owner’s tablet on 2026-10-12, preserving its existing data. Published to the existing shared Drive APK with its link and sharing retained.
+
+## 1.6 — 2026-10-11
+
+- Automatic sessions end after 30 minutes without a photo.
+- Start session offers 1 hour, 2 hours, or custom decimal hours (for example, 1.5). Manual sessions and extensions use a fixed deadline from the action, unaffected by later photos or quiet gaps.
+- Completion reminders offer +1 hour and +2 hours directly in the notification. Opening the reminder offers naming and custom hours; unnamed sessions can resume without a name. Named timed sessions notify again at each deadline.
+- Resume session uses the same quick/custom choices. Active session details show the end time. Explicit Stop suppresses the completion reminder; photos after a timer expires return to automatic discovery.
+- Persist fixed deadlines in database version 5 with an additive migration. Existing sessions, names, dates, photo membership, exports and preferences are retained. Previously open manual periods without a fixed deadline keep inactivity-based completion until resumed.
+- Protect against duplicate and stale notification actions. Fixed timers can complete when photo permission is missing; delayed indexing still honors the original capture-time boundaries. Background execution and reminder delivery remain subject to Android scheduling.
+- Version code 10. Local delivery: `delivery/Photo-Sessions-1.6-debug.apk`. Published in place to the existing shared Drive APK on 2026-10-11, preserving its link and sharing settings.
+
+## 1.5.1 — 2026-10-06
+
+- Allow a blank session date and add Clear to the optional date field. Titles, local folders, Drive folders and Photos albums use only the name when the date is removed. Capture timestamps and session membership are retained.
+
+- Compact home-card counts for Local, Drive and Photos; Photos counts respect the connected account and current album membership.
+- Bold Upload/Copy heading; consistent full-width Copy Locally, Upload to Google Drive and Add to Google Photos buttons.
+- Move Share copies into Local and show it only when all copies are complete. Add Open Local to browse this session's copied files and open them in the device viewer.
+- Correct single-photo/session wording, sharing errors, and local thumbnail accessibility labels; refresh thumbnails when their URI changes.
+- Version code 9; tested and installed on the owner's tablet with data retained. Published to the existing shared Drive APK on 2026-10-06, preserving its link and sharing settings.
+
+## 1.5 — 2026-10-05
+
+- Added direct Google Photos upload into one app-created album per session, alongside Google Drive.
+- Added separate account connection, Wi-Fi/data chooser, progress, cancellation, retry, album link and disconnect controls.
+- Persisted account/session album membership and short-lived upload tokens for retries. Recover a lost album-creation response using a unique temporary album title; recover a deleted album on a later upload. Albums follow session renames, with destination failures reported independently.
+- Keep originals untouched, send original bytes, and avoid resending photos already added to the current album by this app. Photos exports count toward deletion-warning coverage. Existing catalog schema stays at version 4.
+- Version code 8, signed with the existing debug key. The owner enabled Google Photos and the Cloud permission declarations are configured. Tablet consent and a live two-photo upload succeeded; the owner confirmed the upload in Google Photos Albums.
+
+
 Track requested changes, implementation, builds, and testing feedback here. Pending requests are not shipped features.
+
+## 1.4.2 — consistent phone popups — 2026-10-05
+
+- Replaced the cramped upload chooser's text actions with full-width, stacked buttons. Shortened Upload now and moved Wi-Fi/mobile-data wording beneath its label.
+- Applied the same shared dialog and button layout to starting a session, deleting a session, and disconnecting Google Drive. Buttons use left-aligned labels, consistent spacing, and at least 52 dp height; deletion uses a red filled button. Content can scroll on shorter screens or with larger text and an open keyboard.
+- Preserved existing action callbacks, cancellation and busy-state handling. No database migration or upload-policy changes.
+- Version 1.4.2 / code 7. Settings now reads the installed version instead of displaying a hard-coded 1.4 label. Built the local APK with the retained signer; shared Drive download remains 1.4.1.
+
+
+## 1.4.1 — Drive upload error reporting — 2026-10-04
+
+- Diagnosed the connected Vivo V2250: validated, unmetered Wi-Fi was available, Drive authorization and session-folder creation succeeded, but Google Drive returned HTTP 403 because the account's storage quota was exceeded. Upload retries were incorrectly labeled as waiting for a connection.
+- Parse Drive API error reasons and messages. Storage-quota failures now stop retrying and explain that the connected Google account needs free space. Other failures retain the existing retry policy and expose a readable error. Clear previous errors on a fresh upload, successful completion, or required reconnection.
+- Version 1.4.1 / code 6; database schema remains version 4. Built and installed as an update on the connected phone; no data clearing or synthetic photo fixtures. Replaced the shared Drive APK with 1.4.1 at the owner's request, preserving file ID, parent folder, link and anyone-with-link reader access.
+- Earlier in this session, installed the clown launcher icon on the owner's tablet and replaced the shared Drive APK in place, preserving its file ID, sharing and link.
+
 
 ## 1.4 — dates and export folder names — 2026-10-04
 

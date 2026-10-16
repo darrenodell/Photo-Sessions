@@ -40,6 +40,46 @@ class SessionChangesTest {
         assertEquals(3, path.count { it == '/' })
         assertFalse(path.contains('\n')); assertFalse(path.contains('\\'))
     }
+    @Test fun removedDateSurvivesRenameResumeDiscoveryAndReopen() {
+        val now = 1780000000000L
+        val id = db.begin("Beach", now)
+        db.name(id, "Beach", "")
+        db.name(id, "Beach Trip") // Omitting the date must preserve the deliberate blank.
+        db.stop(id, now + 1000); db.begin("Beach Trip", now + 2000, id)
+        db.reconcile(listOf(Photo("a", "content://original/1", now + 3000)), now + 4000)
+        db.close(); db = CatalogDb(context, "changes.db")
+        val session = db.load().sessions.single()
+        assertEquals("", session.sessionDate)
+        assertEquals("Beach Trip", SessionLabels.title(session))
+        assertEquals(now, session.start)
+        assertEquals(id, db.load().photos.single().sessionId)
+        assertEquals("Pictures/Photo Sessions/Beach Trip ($id)/", SessionLabels.localPath(session))
+        db.name(id, "Beach Trip", "2026-10-06")
+        assertEquals("2026-10-06 — Beach Trip", SessionLabels.title(db.load().sessions.single()))
+    }
+    @Test fun removingDateRenamesExistingExportsWithoutChangingTheirIds() {
+        val id = db.begin("Beach", 1000)
+        db.put("folder_$id", "old-folder")
+        db.put("drive_folder_me_$id", "stable-drive-id")
+        db.put("photos_album_me_$id", "stable-photos-id")
+        db.name(id, "Beach", "")
+        val names = mutableListOf<String>()
+        ExportNames(context, db, { sessionId ->
+            val path = SessionLabels.localPath(db.load().sessions.single())
+            assertEquals("Pictures/Photo Sessions/Beach ($id)/", path)
+            db.put("folder_$sessionId", path); db.remove("rename_local_$sessionId")
+        }, { account, folder, title ->
+            assertEquals("me", account); assertEquals("stable-drive-id", folder); names += title
+        }, { account, album, title ->
+            assertEquals("me", account); assertEquals("stable-photos-id", album); names += title
+        }).retry(id)
+        assertEquals(listOf("Beach", "Beach"), names)
+        assertTrue(ExportNames(context, db).problems(id).isEmpty())
+        assertTrue(SessionLabels.validSessionDate(""))
+        assertFalse(SessionLabels.validSessionDate("2026-02-29"))
+        assertThrows(IllegalArgumentException::class.java) { db.name(id, "Beach", "2026-02-29") }
+        assertEquals("Beach", SessionLabels.title(db.load().sessions.single()))
+    }
     @Test fun datesStrictlyRejectInvalidDaysAndFormats() {
         assertTrue(SessionLabels.validDate("2024-02-29"))
         listOf("2026-02-29", "2026-2-01", "2026-13-01", "Oct 4", "").forEach { assertFalse(SessionLabels.validDate(it)) }
@@ -110,6 +150,6 @@ class SessionChangesTest {
         assertEquals("drive-file", db.load().photos.single().driveFileId)
         assertEquals("content://copy/1", db.load().photos.single().copyUri)
         assertEquals("stable-folder", db.state("drive_folder_me_1"))
-        assertEquals(4, db.readableDatabase.version)
+        assertEquals(5, db.readableDatabase.version)
     }
 }

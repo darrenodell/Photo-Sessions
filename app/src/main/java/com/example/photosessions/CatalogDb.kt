@@ -7,12 +7,12 @@ import android.database.sqlite.SQLiteOpenHelper
 import androidx.core.database.sqlite.transaction
 
 /** SQLiteOpenHelper is the sole durable store. No media bytes are stored here. */
-class CatalogDb(context: Context, name: String = "sessions.db") : SQLiteOpenHelper(context, name, null, 4) {
+class CatalogDb(context: Context, name: String = "sessions.db") : SQLiteOpenHelper(context, name, null, 5) {
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE sessions(id INTEGER PRIMARY KEY, name TEXT, start INTEGER NOT NULL, end INTEGER NOT NULL, complete INTEGER NOT NULL, prompt TEXT NOT NULL, manual INTEGER NOT NULL DEFAULT 0, stopped_at INTEGER, session_date TEXT NOT NULL)")
         db.execSQL("CREATE TABLE photos(media_key TEXT PRIMARY KEY, uri TEXT NOT NULL, time INTEGER NOT NULL, session_id INTEGER NOT NULL REFERENCES sessions(id), available INTEGER NOT NULL, copy_uri TEXT, copy_state TEXT NOT NULL DEFAULT 'pending', drive_state TEXT NOT NULL DEFAULT 'none', drive_file_id TEXT, drive_account TEXT)")
-        db.execSQL("CREATE TABLE periods(session_id INTEGER NOT NULL REFERENCES sessions(id), start INTEGER NOT NULL PRIMARY KEY, stop INTEGER)")
+        db.execSQL("CREATE TABLE periods(session_id INTEGER NOT NULL REFERENCES sessions(id), start INTEGER NOT NULL PRIMARY KEY, stop INTEGER, deadline INTEGER)")
         db.execSQL("CREATE INDEX photos_session ON photos(session_id)")
         db.execSQL("CREATE TABLE state(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
     }
@@ -29,6 +29,7 @@ class CatalogDb(context: Context, name: String = "sessions.db") : SQLiteOpenHelp
             db.execSQL("ALTER TABLE photos ADD COLUMN drive_file_id TEXT")
             db.execSQL("ALTER TABLE photos ADD COLUMN drive_account TEXT")
         }
+        if(oldVersion < 5) db.execSQL("ALTER TABLE periods ADD COLUMN deadline INTEGER")
         if(oldVersion < 4) {
             db.execSQL("ALTER TABLE sessions ADD COLUMN session_date TEXT NOT NULL DEFAULT ''")
             db.rawQuery("SELECT id,start FROM sessions", null).use { c ->
@@ -47,6 +48,11 @@ class CatalogDb(context: Context, name: String = "sessions.db") : SQLiteOpenHelp
     @Synchronized fun start(now: Long) {
         writableDatabase.insertWithOnConflict("state", null, ContentValues().apply { put("key", "baseline"); put("value", now.toString()) }, SQLiteDatabase.CONFLICT_IGNORE)
     }
+    /** Start once on the first run of a screenshot-capable version; never backfill older screenshots. */
+    @Synchronized fun screenshotsSince(now: Long): Long {
+        writableDatabase.insertWithOnConflict("state", null, ContentValues().apply { put("key", "screenshots_since"); put("value", now.toString()) }, SQLiteDatabase.CONFLICT_IGNORE)
+        return checkNotNull(state("screenshots_since")).toLong()
+    }
     @Synchronized fun load(): Catalog {
         val sessions = readableDatabase.rawQuery("SELECT id,name,start,end,complete,prompt,manual,stopped_at,session_date FROM sessions ORDER BY start DESC", null).use { c ->
             buildList { while (c.moveToNext()) add(Session(c.getLong(0), if(c.isNull(1)) null else c.getString(1), c.getLong(2), c.getLong(3), c.getInt(4) != 0, c.getString(5), c.getInt(6) != 0, if(c.isNull(7)) null else c.getLong(7), c.getString(8))) }
@@ -54,8 +60,8 @@ class CatalogDb(context: Context, name: String = "sessions.db") : SQLiteOpenHelp
         val photos = readableDatabase.rawQuery("SELECT media_key,uri,time,session_id,available,copy_uri,copy_state,drive_state,drive_file_id,drive_account FROM photos ORDER BY time", null).use { c ->
             buildList { while(c.moveToNext()) add(Photo(c.getString(0), c.getString(1), c.getLong(2), c.getLong(3), c.getInt(4) != 0, if(c.isNull(5)) null else c.getString(5), c.getString(6), c.getString(7), if(c.isNull(8)) null else c.getString(8), if(c.isNull(9)) null else c.getString(9))) }
         }
-        val periods = readableDatabase.rawQuery("SELECT session_id,start,stop FROM periods ORDER BY start", null).use { c ->
-            buildList { while(c.moveToNext()) add(Period(c.getLong(0), c.getLong(1), if(c.isNull(2)) null else c.getLong(2))) }
+        val periods = readableDatabase.rawQuery("SELECT session_id,start,stop,deadline FROM periods ORDER BY start", null).use { c ->
+            buildList { while(c.moveToNext()) add(Period(c.getLong(0), c.getLong(1), if(c.isNull(2)) null else c.getLong(2), if(c.isNull(3)) null else c.getLong(3))) }
         }
         return Catalog(sessions, photos, periods)
     }
@@ -86,37 +92,45 @@ class CatalogDb(context: Context, name: String = "sessions.db") : SQLiteOpenHelp
     }
     @Synchronized fun name(id: Long, name: String?, date: String? = null) = writableDatabase.transaction {
         require(name == null || name.trim().isNotEmpty())
-        require(date == null || SessionLabels.validDate(date)) { "Enter a valid date as YYYY-MM-DD." }
-        writableDatabase.update("sessions", ContentValues().apply { put("name", name?.trim()); put("prompt", "handled"); if(date != null) put("session_date", date) }, "id=?", arrayOf(id.toString()))
+        require(date == null || SessionLabels.validSessionDate(date)) { "Enter a valid date as YYYY-MM-DD, or leave it blank." }
+        writableDatabase.update("sessions", ContentValues().apply { put("name", name?.trim()); if(load().sessions.single { it.id == id }.complete) put("prompt", "handled"); if(date != null) put("session_date", date) }, "id=?", arrayOf(id.toString()))
+        states("photos_album_").keys.filter { it.endsWith("_$id") }.forEach { put(it.replaceFirst("photos_album_", "rename_photos_"), "Album name needs updating.") }
         if(state("folder_$id") != null) put("rename_local_$id", "Folder name needs updating.")
         states("drive_folder_").keys.filter { it.endsWith("_$id") }.forEach { put(it.replaceFirst("drive_folder_", "rename_drive_"), "Folder name needs updating.") }
     }
-    @Synchronized fun begin(name: String, now: Long, resumeId: Long? = null): Long = writableDatabase.transaction {
-        require(name.isNotBlank())
+    @Synchronized fun begin(name: String?, now: Long, resumeId: Long? = null, duration: Long? = null): Long = writableDatabase.transaction {
+        require(resumeId != null || !name.isNullOrBlank())
+        require(duration == null || duration in 60_000..168 * HOUR)
+        require(duration == null || now <= Long.MAX_VALUE - duration)
         start(now)
         val old = load()
         old.sessions.filter { !it.complete }.forEach { stop(it.id, now) }
         val id = resumeId ?: maxOf((old.sessions.maxOfOrNull { it.id } ?: 0) + 1, now, state("next_id")?.toLongOrNull() ?: 1)
         if(resumeId == null) writableDatabase.insertOrThrow("sessions", null, ContentValues().apply {
-            put("session_date", SessionLabels.date(now)); put("id", id); put("name", name.trim()); put("start", now); put("end", now)
-            put("complete", 0); put("prompt", "handled"); put("manual", 1)
+            put("session_date", SessionLabels.date(now)); put("id", id); put("name", name!!.trim()); put("start", now); put("end", now)
+            put("complete", 0); put("prompt", if(duration != null) "pending" else "handled"); put("manual", 1)
         }) else {
             val previous = old.sessions.single { it.id == id }
             if(!previous.manual) writableDatabase.insertOrThrow("periods", null, ContentValues().apply {
                 put("session_id", id); put("start", previous.start)
                 put("stop", minOf(now, previous.stoppedAt ?: (previous.end + SESSION_TIMEOUT)))
             })
-            writableDatabase.update("sessions", ContentValues().apply { put("manual", 1); put("complete", 0); putNull("stopped_at") }, "id=?", arrayOf(id.toString()))
+            writableDatabase.update("sessions", ContentValues().apply { put("manual", 1); put("complete", 0); put("prompt", "pending"); putNull("stopped_at") }, "id=?", arrayOf(id.toString()))
         }
-        writableDatabase.insertOrThrow("periods", null, ContentValues().apply { put("session_id", id); put("start", now) })
+        writableDatabase.insertOrThrow("periods", null, ContentValues().apply { put("session_id", id); put("start", now); put("deadline", duration?.let { now + it }) })
         put("next_id", (id + 1).coerceAtLeast(state("next_id")?.toLongOrNull() ?: 1).toString())
         id
     }
     @Synchronized fun stop(id: Long, now: Long) {
         writableDatabase.transaction {
-            writableDatabase.update("periods", ContentValues().apply { put("stop", now) }, "session_id=? AND stop IS NULL", arrayOf(id.toString()))
-            writableDatabase.update("sessions", ContentValues().apply { put("complete", 1); put("stopped_at", now) }, "id=?", arrayOf(id.toString()))
+            writableDatabase.execSQL("UPDATE periods SET stop=CASE WHEN deadline IS NOT NULL AND deadline < ? THEN deadline ELSE ? END WHERE session_id=? AND stop IS NULL", arrayOf(now, now, id))
+            writableDatabase.update("sessions", ContentValues().apply { put("complete", 1); put("stopped_at", now); put("prompt", "handled") }, "id=?", arrayOf(id.toString()))
         }
+    }
+    /** Fixed timers can end even if photo access has been revoked; membership is recovered later. */
+    @Synchronized fun expireTimers(now: Long) = writableDatabase.transaction {
+        writableDatabase.execSQL("UPDATE sessions SET complete=1 WHERE id IN (SELECT session_id FROM periods WHERE stop IS NULL AND deadline<=?)", arrayOf(now))
+        writableDatabase.execSQL("UPDATE periods SET stop=deadline WHERE stop IS NULL AND deadline<=?", arrayOf(now))
     }
     @Synchronized fun copyStatus(key: String, uri: String?, state: String) {
         writableDatabase.update("photos", ContentValues().apply { put("copy_uri", uri); put("copy_state", state) }, "media_key=?", arrayOf(key))
@@ -134,12 +148,14 @@ class CatalogDb(context: Context, name: String = "sessions.db") : SQLiteOpenHelp
             writableDatabase.delete("periods", "session_id=?", arrayOf(id.toString()))
             writableDatabase.delete("photos", "session_id=?", arrayOf(id.toString()))
             writableDatabase.delete("sessions", "id=?", arrayOf(id.toString()))
-            states("").keys.filter { it == "folder_$id" || it == "rename_local_$id" ||
+            states("").keys.filter { it == "folder_$id" || it == "rename_local_$id" || it == "photos_mode_$id" || it == "photos_error_$id" ||
+                ((it.startsWith("photos_item_") || it.startsWith("photos_token_")) && it.contains("_${id}_")) ||
+                ((it.startsWith("photos_album_") || it.startsWith("photos_url_") || it.startsWith("photos_name_") || it.startsWith("photos_pending_") || it.startsWith("rename_photos_")) && it.endsWith("_$id")) ||
                 ((it.startsWith("drive_folder_") || it.startsWith("drive_name_") || it.startsWith("rename_drive_") || it.startsWith("drive_mode_")) && it.endsWith("_$id")) }.forEach { remove(it) }
         }
     }
     // At-most-once reservation survives crashes. A crash after reservation may lose an alert,
     // but never causes a second prompt; the unnamed session remains visible in the app.
     @Synchronized fun claim(id: Long): Boolean = writableDatabase.update("sessions", ContentValues().apply { put("prompt", "claimed") },
-        "id=? AND complete=1 AND prompt='pending' AND name IS NULL", arrayOf(id.toString())) == 1
+        "id=? AND complete=1 AND prompt='pending'", arrayOf(id.toString())) == 1
 }

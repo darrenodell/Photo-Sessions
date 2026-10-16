@@ -12,6 +12,10 @@ class ExportNames(private val context: Context, private val db: CatalogDb,
             if(e.code == 401) { DriveAuth.clear(context, token); error("Reconnect Google Drive for $account, then retry folder names.") }
             throw e
         }
+    },
+    private val photosRename: (String, String, String) -> Unit = { account, album, target ->
+        val token = PhotosAuth.token(context, account) ?: error("Reconnect Google Photos for $account, then retry names.")
+        PhotosApi(token).renameAlbum(album, target)
     }
 ) {
     companion object { val lock = Any() }
@@ -34,9 +38,19 @@ class ExportNames(private val context: Context, private val db: CatalogDb,
                 } catch(e: Exception) { db.put(errorKey, e.message ?: "Drive folder rename failed. Check your connection and retry.") }
             }
         }
+        db.states("photos_album_").filterKeys { it.endsWith("_$id") }.forEach { (key, album) ->
+            val account = key.removePrefix("photos_album_").removeSuffix("_$id")
+            val suffix = "${account}_$id"; val target = photosAlbumTitle(SessionLabels.title(session))
+            if(db.state("photos_name_$suffix") != target || db.state("rename_photos_$suffix") != null) {
+                try { photosRename(account, album, target); db.put("photos_name_$suffix", target); db.remove("rename_photos_$suffix") }
+                catch(e: Exception) { db.put("rename_photos_$suffix", e.message ?: "Google Photos album rename failed.") }
+            }
+        }
     }
     fun problems(id: Long): List<String> = listOfNotNull(db.state("rename_local_$id")?.let { "Device: $it" }) +
         db.states("rename_drive_").filterKeys { it.endsWith("_$id") }.map { (key, value) ->
             "Drive (${key.removePrefix("rename_drive_").removeSuffix("_$id")}): $value"
+        } + db.states("rename_photos_").filterKeys { it.endsWith("_$id") }.map { (key, value) ->
+            "Photos (${key.removePrefix("rename_photos_").removeSuffix("_$id")}): $value"
         }
 }

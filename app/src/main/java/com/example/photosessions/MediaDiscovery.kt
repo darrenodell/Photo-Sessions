@@ -27,7 +27,7 @@ object Permissions {
 }
 
 class MediaDiscovery(private val context: Context) {
-    fun scan(baseline: Long, now: Long): List<Photo> {
+    fun scan(baseline: Long, now: Long, screenshotsSince: Long): List<Photo> {
         check(Permissions.access(context) != PhotoAccess.NONE)
         val photos = mutableListOf<Photo>()
         // Query each real volume: IDs are only unique within a volume.
@@ -45,9 +45,7 @@ class MediaDiscovery(private val context: Context) {
                     val id = c.getLong(0)
                     val taken = c.getLong(1)
                     val added = c.getLong(2)
-                    if(!SessionRules.cameraPath(c.getString(3) ?: "")) continue
-                    val time = SessionRules.effectiveTime(taken, added, now) ?: continue
-                    if(time < baseline) continue
+                    val time = SessionRules.discoveryTime(c.getString(3) ?: "", taken, added, baseline, screenshotsSince, now) ?: continue
                     photos += Photo("$volume:$id:$added", ContentUris.withAppendedId(collection, id).toString(), time)
                 }
             }

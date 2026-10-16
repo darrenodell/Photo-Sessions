@@ -64,7 +64,27 @@ object DriveAuth {
     fun clear(context: Context, token: String) { runCatching { GoogleAuthUtil.clearToken(context, token) } }
 }
 
-class DriveHttpException(val code: Int, message: String) : IOException(message)
+class DriveHttpException(val code: Int, message: String, val reason: String? = null) : IOException(message) {
+    companion object {
+        fun fromResponse(code: Int, body: String): DriveHttpException {
+            val error = runCatching { JSONObject(body).optJSONObject("error") }.getOrNull()
+            val message = error?.optString("message")?.takeIf { it.isNotBlank() }
+                ?: "Google Drive returned $code."
+            val reason = error?.optJSONArray("errors")?.optJSONObject(0)?.optString("reason")?.takeIf { it.isNotBlank() }
+            return DriveHttpException(code, message, reason)
+        }
+    }
+}
+
+object DriveUploadErrors {
+    fun storageFull(error: Exception) = error is DriveHttpException && error.reason == "storageQuotaExceeded"
+    fun message(error: Exception): String = when {
+        storageFull(error) -> "Google Drive storage is full. Free up space in that Google account, then upload again."
+        error is DriveHttpException -> error.message ?: "Google Drive could not accept the upload."
+        error is IOException -> "Could not reach Google Drive. Check the internet connection and try again."
+        else -> "The upload could not finish. Try again."
+    }
+}
 
 /** Minimal Drive REST v3 client over HttpURLConnection; no extra libraries. */
 class DriveApi(private val token: String) {
@@ -75,7 +95,7 @@ class DriveApi(private val token: String) {
     private fun HttpURLConnection.text(): String {
         val code = responseCode
         val body = (if(code in 200..299) inputStream else errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if(code !in 200..299) throw DriveHttpException(code, "Google Drive returned $code. ${body.take(200)}")
+        if(code !in 200..299) throw DriveHttpException.fromResponse(code, body)
         return body
     }
     private fun json(method: String, url: String, payload: JSONObject? = null): JSONObject {
@@ -243,17 +263,20 @@ class UploadWorker(context: Context, params: WorkerParameters) : Worker(context,
                 UploadNotes.progress(applicationContext, id, done, total)
             }, { isStopped })
             when(outcome) {
-                UploadOutcome.DONE -> { UploadNotes.finished(applicationContext, id, repository.db); Result.success() }
+                UploadOutcome.DONE -> { repository.db.remove("drive_error_$id"); UploadNotes.finished(applicationContext, id, repository.db); Result.success() }
                 UploadOutcome.STOPPED -> Result.retry()
                 UploadOutcome.RECONNECT -> {
+                    repository.db.remove("drive_error_$id")
                     repository.db.put("drive_reconnect", "1")
                     UploadNotes.reconnect(applicationContext, id)
                     Result.failure()
                 }
             }
         } catch(e: Exception) {
-            if(runAttemptCount < 6) Result.retry() else {
-                UploadNotes.failed(applicationContext, id, e.message)
+            val message = DriveUploadErrors.message(e)
+            repository.db.put("drive_error_$id", message)
+            if(!DriveUploadErrors.storageFull(e) && runAttemptCount < 6) Result.retry() else {
+                UploadNotes.failed(applicationContext, id, message)
                 Result.failure()
             }
         } finally { repository.refresh() }

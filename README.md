@@ -1,3 +1,99 @@
+# Photo Sessions
+
+A native Android app that groups new camera photos and screenshots into named sessions. It supports automatic grouping, fixed-duration manual sessions, local copies and sharing, plus optional uploads to Google Drive and Google Photos. Original media files stay untouched.
+
+## Build from source
+
+1. Clone this repository and open it in Android Studio:
+
+   ```sh
+   git clone https://github.com/darrenodell/Photo-Sessions.git
+   cd Photo-Sessions
+   ```
+
+2. Use JDK 17 and install Android SDK Platform 37 (`platforms;android-37.0`), Build Tools 36.0.0 and Platform Tools. Android Studio can configure your local SDK path in `local.properties`; that file stays out of Git.
+3. Build and run the host checks from Android Studio, or with `JAVA_HOME` and `ANDROID_HOME` pointing to your installations:
+
+   ```sh
+   ./gradlew testDebugUnitTest lintDebug assembleDebug
+   ```
+
+4. Install `app/build/outputs/apk/debug/app-debug.apk` on an Android 10 or newer device. Grant full photo access for automatic discovery. Notifications and Google account connections are optional.
+
+The Gradle wrapper and pinned dependency versions are included. The local `.tools/` directory, SDK/JDK installations, device databases, credentials, signing keys and built APKs are excluded. Building does not require the original developer's `.tools/build-local.sh` script.
+
+### Google integrations and signing
+
+A fresh development machine normally creates a different debug signing key. Google Drive and Google Photos authorization require an Android OAuth client matching the package `com.example.photosessions` and the certificate signing that APK. Configure your own Google Cloud project/client and enable the required APIs/scopes; [DRIVE-SETUP.md](DRIVE-SETUP.md) records the original installation's setup, and the version 1.5 notes below list the Photos scopes. Local grouping and copying do not require Google Cloud configuration.
+
+Signing keys and user tokens are not included in this repository. Updating an existing installed app requires its matching signing key; keep that key private. The owner's downloadable APK retains the existing signer and is distributed through the Drive link below.
+
+## Current release: 1.7 — Screenshots — October 16, 2026
+
+New screenshots join camera photos in the same sessions. Supported screenshot folders are `Pictures/Screenshots/` and `DCIM/Screenshots/`, including their subfolders on accessible media volumes. Screenshot discovery starts when this version first runs; existing screenshots are not imported. Custom screenshot save locations outside those folders are not automatically included.
+
+Screenshots start and extend automatic sessions using the same 30-minute inactivity rule. Manual sessions retain their fixed deadline. Original files stay untouched; local copies, sharing and uploads preserve the image bytes and file type. No additional Android permission or database migration is required. Android's existing background scheduling and limited-photo-access constraints still apply.
+
+Local APK: `delivery/Photo-Sessions-1.7-debug.apk`. Installed and tested on the owner's Galaxy Tab A9, then uploaded to the [unchanged Drive download](https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view?usp=drivesdk). See [VALIDATION.md](VALIDATION.md) for verification and delivery details.
+
+# Version 1.6.3 — Photo captions — October 12, 2026
+
+Photos that have not been copied locally no longer show a “Not copied” caption. Local APK: `delivery/Photo-Sessions-1.6.3-debug.apk`. Installed on the owner’s tablet and available at the [unchanged Drive download](https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view).
+
+# Version 1.6.2 — Google Photos album opening — October 12, 2026
+
+**Open in Google Photos** becomes available after photos have been added and the current upload has finished. This prevents opening a newly created album before its first upload completes. All duration choices from 1.6.1 are retained.
+
+Local APK: `delivery/Photo-Sessions-1.6.2-debug.apk`. Installed on the owner’s tablet and published to the [existing Drive download](https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view).
+
+# Version 1.6.1 — Simple duration choices — October 11, 2026
+
+Manual sessions and automatic-session extensions now offer **30 minutes**, **1 hour**, and **2 hours**. The same choices appear in the session-ending notification. **Custom hours** accepts whole numbers from 1 to 168; decimals are rejected. Use the dedicated 30-minute button for half an hour.
+
+Timers still run from when you tap; automatic discovery still completes after 30 minutes without a photo. Existing sessions and running timers are preserved. Local APK: `delivery/Photo-Sessions-1.6.1-debug.apk`. Installed and verified on the owner’s tablet and published to the [existing Drive download](https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view) on October 12, 2026. Earlier release notes below describe historical versions.
+
+# Version 1.6 — Session timers — October 11, 2026
+
+Automatic sessions now end after **30 minutes without a photo**. Their notification offers **+1 hour** and **+2 hours**; tap the notification for naming and a custom-hours field. You can continue an unnamed session without naming it first.
+
+**Start session** now asks for the session name and length: **1 hour**, **2 hours**, or custom hours such as **1.5**. Manual and resumed sessions end at a fixed time measured from the action. Taking more photos does not reset the timer, and quiet gaps do not end it early. The session screen shows when it ends. You can still stop it manually.
+
+At each timer deadline, a reminder offers another extension, including for named sessions. Resuming keeps the same session ID, name, date and photos; any other active session is completed. New photos taken after the deadline are discovered automatically in a separate session. Custom durations range from one minute to 168 hours, rounded to the nearest minute.
+
+Version 1.6 / code 10 uses database version 5 with a non-destructive migration for persistent deadlines. Install as an update to retain existing data. Legacy manual periods without a fixed deadline retain inactivity-based completion until resumed. Android may delay background reminders; capture-time membership still uses the stored deadline. See [VALIDATION.md](VALIDATION.md) for checks and limitations. Local APK: `delivery/Photo-Sessions-1.6-debug.apk`. [Download 1.6 from Google Drive](https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view?usp=drivesdk); replaced the existing shared APK on October 11, preserving its link and sharing settings. Earlier release notes below describe historical versions.
+
+# Version 1.5.1 — Consistent copy and upload controls — October 6, 2026
+
+Home cards show compact Local, Drive and Photos counts, wrapping whole labels only when needed. **Upload/Copy** is bold. The sections appear in this order: Google Photos, Google Drive, then Local. Add to Google Photos, Upload to Google Drive and Copy Locally use matching full-width buttons. Local copies have their own Open Local gallery; tapping a thumbnail opens the copy in the device's image viewer. Share copies stays in the Local section and appears only when every photo has a completed copy. Single-photo labels and sharing error messages are corrected.
+
+The date is optional when naming or renaming a session. Tap Clear beside the date, or delete it, to use the name alone. Existing exported folder and album names follow the label; original capture times are retained.
+
+Installed on the owner's Galaxy Tab A9 as an in-place update. Local APK: `delivery/Photo-Sessions-1.5.1-debug.apk`, version code 9. [Download 1.5.1 from Google Drive](https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view); the existing link and sharing settings are preserved. See [VALIDATION.md](VALIDATION.md).
+
+# Version 1.5 — Google Photos albums — October 5, 2026
+
+Open a session's **Upload & copies** panel and choose **Add to Google Photos**. Each session gets an app-created album named with its date and session name. Choose Wait for Wi-Fi or Upload now, approve Photos access, and follow progress in the panel. Cancel, retry and Open in Google Photos are available independently of Drive. Settings has separate Drive and Photos connection controls. Renaming a session also updates its exported Photos album; deleting a session keeps exported photos and albums.
+
+Photos are sent at original quality. Google documents that identical uploaded bytes return the same media item ID, but album membership for photos previously backed up outside this app still requires live device verification. This integration cannot browse or reorganize the rest of a person's Google Photos library. Device originals and copies stay untouched. Photos-only export can use a camera original without first making a device copy.
+
+Owner setup: enable the [Google Photos Library API](https://console.cloud.google.com/apis/library/photoslibrary.googleapis.com?project=cohesive-apogee-510314-j3) in the existing Photo Sessions Cloud project. In Google Auth Platform > Data Access, retain `drive.file` and add `photoslibrary.appendonly`, `photoslibrary.readonly.appcreateddata`, `photoslibrary.edit.appcreateddata` (all under `https://www.googleapis.com/auth/`) plus `userinfo.email`. Keep the existing Android OAuth client/signing key and test-user audience. Each user must consent to the added permissions. The owner enabled the Photos Library API and the five permission declarations were saved on 2026-10-05. Tablet consent succeeded; the app reported 2 of 2 photos added for the Ehra session, and the owner confirmed finding the upload in Google Photos Albums.
+
+Local APK: `delivery/Photo-Sessions-1.5-debug.apk`, version code 8. Installed on the connected Galaxy Tab A9 as an in-place update. [Download 1.5 from Google Drive](https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view); the existing download link and sharing settings are preserved. See [VALIDATION.md](VALIDATION.md).
+
+References: [Photos uploads](https://developers.google.com/photos/library/guides/upload-media), [album management](https://developers.google.com/photos/library/guides/manage-albums), [Photos permissions](https://developers.google.com/photos/overview/authorization).
+
+# Version 1.4.2 — consistent phone popups — October 5, 2026
+
+The upload Wi-Fi/data chooser, Start session, Delete session, and Disconnect Drive popups now share full-width, vertically stacked buttons with left-aligned labels. The upload chooser uses a short **Upload now** label with **Use Wi-Fi or mobile data** underneath. Dialogs scroll when space is limited, including with larger text or the keyboard open. Delete remains clearly marked in red, and Settings displays the installed version.
+
+Local APK: `delivery/Photo-Sessions-1.4.2-debug.apk`, version code 7. See [VALIDATION.md](VALIDATION.md) for emulator checks and previews. [Download 1.4.2 from Google Drive](https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view); the existing download link and sharing settings are preserved.
+
+# Version 1.4.1 — Drive upload error reporting — October 4, 2026
+
+Google Drive storage-full errors now explain that space must be freed in the connected Google account. These errors stop the upload rather than repeatedly retrying while displaying a connection wait. Other upload failures retain automatic retries with a visible error message. Existing sessions and photos are preserved; the database schema remains version 4.
+
+Local APK: `delivery/Photo-Sessions-1.4.1-debug.apk`, version code 6. Installed on the connected Vivo V2250 during troubleshooting. [Download 1.4.1 from Google Drive](https://drive.google.com/file/d/1Pbif3_jMADr6TfyfbGbrg9LUrU0Tbhoz/view); the existing download link and sharing settings are preserved.
+
 # Version 1.4 — dates, folder renames and cover deletion — October 4, 2026
 
 - Sessions display `YYYY-MM-DD — Name`. The date defaults to the session start, stays fixed when renaming or resuming, and can be edited in **Rename → Session date**. Editing the label date does not change photo membership or capture times.

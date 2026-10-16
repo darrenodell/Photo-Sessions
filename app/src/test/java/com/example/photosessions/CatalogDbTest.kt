@@ -24,6 +24,16 @@ class CatalogDbTest {
         db.start(now); db.start(now + 1000); db.close(); db = CatalogDb(context, name)
         assertEquals(now.toString(), db.state("baseline"))
     }
+    @Test fun screenshotStartSurvivesReopenWithoutChangingCameraBaselineOrCatalog() {
+        db.start(now - HOUR)
+        val original = db.reconcile(photos, now)
+        assertEquals(now, db.screenshotsSince(now))
+        db.close(); db = CatalogDb(context, name)
+        assertEquals(now, db.screenshotsSince(now + HOUR))
+        assertEquals((now - HOUR).toString(), db.state("baseline"))
+        assertEquals(original, db.load())
+        assertEquals(5, db.readableDatabase.version)
+    }
     @Test fun repeatScanAfterReopenDoesNotDuplicateOrReprompt() {
         val result = db.reconcile(photos + photos, now + SESSION_TIMEOUT)
         val id = result.sessions.single().id
@@ -138,7 +148,7 @@ class CatalogDbTest {
         assertEquals("Old name", db.load().sessions.single().name)
         assertEquals("pending", db.load().photos.single().copyState)
         assertEquals("off", db.state("notifications"))
-        assertEquals(4, db.readableDatabase.version)
+        assertEquals(5, db.readableDatabase.version)
         db.readableDatabase.rawQuery("PRAGMA foreign_key_check", null).use { assertFalse(it.moveToFirst()) }
     }
 }

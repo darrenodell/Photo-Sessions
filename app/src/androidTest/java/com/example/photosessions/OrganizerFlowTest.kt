@@ -41,6 +41,13 @@ class OrganizerFlowTest {
         check(repo.db.state("baseline") == null) { "Use a fresh emulator installation; this test will not overwrite an existing catalog." }
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val automation = instrumentation.uiAutomation
+        fun snapshot(name: String) {
+            compose.waitForIdle(); instrumentation.waitForIdleSync(); android.os.SystemClock.sleep(350)
+            automation.takeScreenshot()?.let { screenshot ->
+                File(context.filesDir, name).outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                screenshot.recycle()
+            }
+        }
         val read = if(Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
         automation.grantRuntimePermission(context.packageName, read)
         if(Build.VERSION.SDK_INT >= 33) automation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
@@ -111,7 +118,7 @@ class OrganizerFlowTest {
             compose.onNodeWithText("Show all sessions").performClick()
             compose.onAllNodesWithText("Unnamed session", substring = true).assertCountEquals(2)
             compose.waitUntil(10_000) {
-                compose.onAllNodes(hasContentDescription("Camera photo taken", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size == 2
+                compose.onAllNodes(hasContentDescription("Photo taken", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size == 2
             }
             compose.waitForIdle()
             instrumentation.waitForIdleSync()
@@ -134,13 +141,13 @@ class OrganizerFlowTest {
             compose.waitForIdle()
             compose.onNodeWithText("Garage wiring", substring = true).assertIsDisplayed()
             compose.waitUntil(10_000) {
-                compose.onAllNodes(hasContentDescription("Camera photo taken", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size == 2
+                compose.onAllNodes(hasContentDescription("Photo taken", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size == 2
             }
             val viewMonitor = instrumentation.addMonitor(android.content.IntentFilter(Intent.ACTION_VIEW).apply {
                 addDataType("image/*"); addDataScheme("content")
             }, android.app.Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null), true)
             try {
-                compose.onAllNodes(hasContentDescription("Camera photo taken", substring = true)).onFirst().performClick()
+                compose.onAllNodes(hasContentDescription("Photo taken", substring = true)).onFirst().performClick()
                 assertEquals("Tapping a photo should open the device viewer", 1, viewMonitor.hits)
             } finally { instrumentation.removeMonitor(viewMonitor) }
             compose.waitForIdle()
@@ -170,7 +177,12 @@ class OrganizerFlowTest {
             if(compose.onAllNodesWithContentDescription("Show upload and copy controls").fetchSemanticsNodes().isNotEmpty()) {
                 compose.onNodeWithContentDescription("Show upload and copy controls").performClick()
             }
-            compose.onNodeWithText("Copy pending photos").performScrollTo().performClick()
+            compose.onNodeWithText("Upload to Google Drive").performScrollTo().performClick()
+            compose.onNodeWithText("Wait for Wi-Fi").assertIsDisplayed()
+            compose.onNodeWithText("Upload now").assertIsDisplayed()
+            snapshot("validation-dialog-upload-real.png")
+            compose.onNodeWithText("Cancel").performScrollTo().performClick()
+            compose.onNodeWithText("Copy Locally").performScrollTo().performClick()
             compose.waitUntil(10_000) { repo.db.load().photos.filter { it.sessionId == older.id }.all { it.copyState == "copied" } }
             var copied = repo.db.load().photos.filter { it.sessionId == older.id }
             assertTrue(copied.all { it.copyState == "copied" })
@@ -222,16 +234,19 @@ class OrganizerFlowTest {
             resumedActivity()?.let { activity -> instrumentation.runOnMainSync { activity.finish() } }
             instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             compose.onNodeWithText("Start a session").performScrollTo().performClick()
+            snapshot("validation-dialog-start.png")
             compose.onNodeWithText("Session name").performTextInput("New project")
-            compose.onNodeWithText("Start session").performClick()
+            snapshot("validation-dialog-start-keyboard.png")
+            compose.onNodeWithText("Start session").performScrollTo().performClick()
             compose.waitUntil(10_000) { repo.db.load().sessions.any { it.name == "New project" } }
             compose.onNodeWithText("Stop session").performScrollTo().performClick()
             compose.waitUntil(10_000) { repo.db.load().sessions.single { it.name == "New project" }.complete }
             compose.onNodeWithText("Resume session").performScrollTo().performClick()
+            compose.onNodeWithText("1 hour").performScrollTo().performClick()
             compose.waitUntil(10_000) { !repo.db.load().sessions.single { it.name == "New project" }.complete }
             compose.onNodeWithText("Rename").performScrollTo().performClick()
             compose.onNodeWithText("Session name").performTextReplacement("Project renamed")
-            compose.onNodeWithText("Session date").performTextReplacement("2026-10-04")
+            compose.onNodeWithText("Session date (optional)").performTextReplacement("2026-10-04")
             compose.onNodeWithText("Save").performScrollTo().performClick()
             compose.waitUntil(10_000) { repo.db.load().sessions.any { it.name == "Project renamed" && it.sessionDate == "2026-10-04" } }
             compose.waitForIdle()
@@ -244,7 +259,7 @@ class OrganizerFlowTest {
             compose.onNodeWithContentDescription("Back").performClick()
             compose.onNodeWithContentDescription("Delete 2026-10-04 — Project renamed").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Checking device copies…").fetchSemanticsNodes().isEmpty() }
-            compose.onAllNodesWithText("Delete session").onLast().performClick()
+            compose.onAllNodesWithText("Delete session").onLast().performScrollTo().performClick()
             compose.waitUntil(10_000) { repo.db.load().sessions.none { it.name == "Project renamed" } }
             compose.onNodeWithContentDescription("Delete ${SessionLabels.title(repo.db.load().sessions.single { it.id == newer.id })}").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Warning:", substring = true).fetchSemanticsNodes().isNotEmpty() }
@@ -253,8 +268,16 @@ class OrganizerFlowTest {
             automation.takeScreenshot()?.let { screenshot ->
                 File(context.filesDir, "validation-delete-v14.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }; screenshot.recycle()
             }
-            compose.onNodeWithText("Cancel").performClick()
+            snapshot("validation-dialog-delete.png")
+            compose.onNodeWithText("Cancel").performScrollTo().performClick()
             assertTrue(repo.db.load().sessions.any { it.id == newer.id })
+            repo.db.put("drive_account", "popup-preview@example.test"); repo.refresh()
+            compose.onNodeWithContentDescription("Settings").performClick()
+            compose.onNodeWithText("Disconnect Google Drive").performScrollTo().performClick()
+            compose.onNodeWithText("Disconnect").assertIsDisplayed()
+            snapshot("validation-dialog-disconnect.png")
+            compose.onNodeWithText("Cancel").performScrollTo().performClick()
+            repo.db.remove("drive_account"); repo.refresh()
             compose.waitForIdle()
             instrumentation.waitForIdleSync()
             android.os.SystemClock.sleep(300)
@@ -263,6 +286,7 @@ class OrganizerFlowTest {
                 screenshot.recycle()
             }
         } finally {
+            repo.db.remove("drive_account")
             try {
                 resumedActivity()?.let { activity -> instrumentation.runOnMainSync { activity.finish() } }
             } finally {

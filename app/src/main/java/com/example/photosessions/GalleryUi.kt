@@ -30,6 +30,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+internal fun photoCountLabel(count: Int) = "$count ${if(count == 1) "photo" else "photos"}"
+
 // A quiet gallery palette: neutral surfaces keep the photographs in focus.
 @Composable
 internal fun PhotoSessionsTheme(content: @Composable () -> Unit) {
@@ -99,7 +101,7 @@ internal fun StartSessionButton(enabled: Boolean, onClick: () -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SessionLibrary(
-    catalog: Catalog, refresh: Long, driveAccount: String?, busy: Boolean,
+    catalog: Catalog, refresh: Long, driveAccount: String?, busy: Boolean, photosCounts: Map<Long, Int> = emptyMap(),
     onStart: () -> Unit, onOpen: (Long) -> Unit, onDelete: (Long) -> Unit, status: @Composable () -> Unit
 ) {
     var filter by rememberSaveable { mutableStateOf("All") }
@@ -114,7 +116,7 @@ internal fun SessionLibrary(
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(Modifier.padding(end = 24.dp)) {
                     Text("Sessions", style = MaterialTheme.typography.headlineLarge)
-                    Text(if(catalog.sessions.isEmpty()) "Your photos, grouped together" else "${catalog.sessions.size} sessions  •  ${catalog.photos.size} photos",
+                    Text(if(catalog.sessions.isEmpty()) "Your photos, grouped together" else "${catalog.sessions.size} ${if(catalog.sessions.size == 1) "session" else "sessions"}  •  ${photoCountLabel(catalog.photos.size)}",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if(catalog.sessions.isNotEmpty()) StartSessionButton(!busy, onStart)
@@ -131,7 +133,7 @@ internal fun SessionLibrary(
         if(sessions.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
             EmptyGallery(
                 title = if(catalog.sessions.isEmpty()) "Your first session starts here" else "No ${filter.lowercase()} sessions",
-                message = if(catalog.sessions.isEmpty()) "Name a session, then take photos with your Camera app. Find them all together here." else "Choose All to see the rest of your sessions."
+                message = if(catalog.sessions.isEmpty()) "Name a session, then take photos or screenshots. Find them all together here." else "Choose All to see the rest of your sessions."
             ) {
                 if(catalog.sessions.isEmpty()) StartSessionButton(!busy, onStart)
                 else TextButton(onClick = { filter = "All" }) { Text("Show all sessions") }
@@ -151,10 +153,10 @@ internal fun SessionLibrary(
                 }
                 Column(Modifier.padding(top = 12.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(SessionLabels.title(session), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text("${photos.size} ${if(photos.size == 1) "photo" else "photos"}",
+                    Text(photoCountLabel(photos.size),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val uploaded = photos.count { it.driveState == "uploaded" && driveAccount != null && it.driveAccount == driveAccount }
-                    if(uploaded > 0) Text("$uploaded in Drive", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    ExportCounts(photos.count { it.copyState == "copied" && it.copyUri != null }, uploaded, photosCounts[session.id] ?: 0)
                 }
             }
         }
@@ -203,7 +205,7 @@ internal fun SessionGallery(
                         Column {
                             TextButton(onClick = { showTools = !showTools }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(16.dp)) {
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                                    Text("Upload & copies", style = MaterialTheme.typography.titleSmall)
+                                    Text("Upload/Copy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                     Text(transferSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Icon(if(showTools) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
@@ -217,19 +219,22 @@ internal fun SessionGallery(
                     Text("Photos", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                 }
                 if(photos.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                    EmptyGallery("No photos yet", "Take photos with your Camera app. New photos will appear in this session while it is active.")
+                    EmptyGallery("No photos yet", "Take photos or screenshots. New images will appear in this session while it is active.")
                 }
                 items(photos, key = { it.key }) { photo ->
                     Card(onClick = { onPhoto(photo) }, shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background)) {
                         Thumbnail(photo, refresh, Modifier.fillMaxWidth().aspectRatio(1f))
-                        Text(when(photo.copyState) { "copied" -> "Copied"; "failed" -> "Copy failed · retry"; "copying" -> "Needs retry"; else -> "Not copied" },
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
+                        val copyLabel = when(photo.copyState) { "copied" -> "Copied"; "failed" -> "Copy failed · retry"; "copying" -> "Needs retry"; else -> null }
+                        copyLabel?.let { label ->
+                            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
+                        }
                     }
                 }
             }
             if(wide) Surface(modifier = Modifier.width(320.dp).fillMaxHeight(), color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    Text("Upload & copies", style = MaterialTheme.typography.titleLarge)
+                    Text("Upload/Copy", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     tools()
                 }
             }

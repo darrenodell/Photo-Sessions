@@ -10,6 +10,23 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], application = android.app.Application::class)
+class DriveErrorTest {
+    @Test fun driveStorageQuotaIsReportedWithoutSuggestingAWifiFailure() {
+        val error = DriveHttpException.fromResponse(403, """{"error":{"code":403,"message":"The user's Drive storage quota has been exceeded.","errors":[{"reason":"storageQuotaExceeded"}]}}""")
+        assertTrue(DriveUploadErrors.storageFull(error))
+        assertEquals("Google Drive storage is full. Free up space in that Google account, then upload again.", DriveUploadErrors.message(error))
+    }
+    @Test fun otherDriveErrorsDoNotStopTheNormalRetryPolicy() {
+        val error = DriveHttpException.fromResponse(403, """{"error":{"message":"Too many requests.","errors":[{"reason":"userRateLimitExceeded"}]}}""")
+        assertFalse(DriveUploadErrors.storageFull(error))
+        assertEquals("Too many requests.", DriveUploadErrors.message(error))
+        assertEquals("Google Drive returned 503.", DriveHttpException.fromResponse(503, "<html>Unavailable</html>").message)
+        assertFalse(DriveUploadErrors.storageFull(java.io.IOException("Network unavailable")))
+    }
+}
+
 class DriveQueryTest {
     @Test fun literalsEscapeQuotesAndBackslashes() {
         assertEquals("'it\\'s'", DriveQuery.literal("it's"))
@@ -73,7 +90,7 @@ class DriveStateTest {
         legacy.execSQL("INSERT INTO photos VALUES('k1','content://media/1',100,1,1,'content://media/copy1','copied')")
         legacy.version = 2; legacy.close()
         db = CatalogDb(context, name)
-        assertEquals(4, db.readableDatabase.version)
+        assertEquals(5, db.readableDatabase.version)
         val photo = db.load().photos.single()
         assertEquals("copied", photo.copyState); assertEquals("none", photo.driveState)
         assertEquals("Garage", db.load().sessions.single().name)

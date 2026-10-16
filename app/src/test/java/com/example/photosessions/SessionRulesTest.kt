@@ -84,4 +84,30 @@ class SessionRulesTest {
         assertTrue(SessionRules.cameraPath("dcim/CAMERA/burst/"))
         listOf("Pictures/Screenshots/", "Download/", "DCIM/CameraOther/", "Pictures/WhatsApp/", "").forEach { assertFalse(SessionRules.cameraPath(it)) }
     }
+    @Test fun screenshotFoldersExcludeDownloadsExportsAndSimilarNames() {
+        listOf("Pictures/Screenshots/", "DCIM/Screenshots", "/pictures/SCREENSHOTS/edited/", "DCIM/Screenshots/scroll/").forEach {
+            assertTrue(it, SessionRules.screenshotPath(it))
+        }
+        listOf("Pictures/Photo Sessions/Test/", "Download/Screenshots/", "DCIM/ScreenshotsOther/", "Pictures/WhatsApp/", "").forEach {
+            assertFalse(it, SessionRules.screenshotPath(it))
+        }
+    }
+    @Test fun screenshotCutoffDoesNotBackfillOrHideOlderCameraPhotos() {
+        val baseline = start - HOUR
+        fun time(path: String, taken: Long, added: Long = taken / 1000) =
+            SessionRules.discoveryTime(path, taken, added, baseline, start, start + HOUR)
+        assertEquals(start - 1, time("DCIM/Camera/", start - 1))
+        assertNull(time("Pictures/Screenshots/", start - 1, (start + HOUR) / 1000))
+        assertEquals(start, time("Pictures/Screenshots/", start))
+        assertEquals(start + 1000, time("DCIM/Screenshots/", start + 1000))
+        assertEquals(start, time("DCIM/Screenshots/", 0, start / 1000))
+        assertNull(time("DCIM/Screenshots/", 0, start / 1000 - 1))
+        assertNull(time("Pictures/Photo Sessions/Test/", start))
+        assertNull(time("Download/", start))
+        assertNull(time("DCIM/Camera/", baseline - 1))
+        // Missing capture dates cannot lose a screenshot created during the activation second.
+        assertEquals(start, SessionRules.discoveryTime("DCIM/Screenshots/", 0, start / 1000, baseline, start + 500, start + HOUR))
+        // A new installation still excludes screenshots taken before monitoring starts.
+        assertNull(SessionRules.discoveryTime("DCIM/Screenshots/", start, start / 1000, start + 1000, start, start + HOUR))
+    }
 }
